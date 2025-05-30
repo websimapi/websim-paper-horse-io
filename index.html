@@ -226,21 +226,38 @@
         const playersContainer = document.getElementById('playersContainer');
 
         function createHorseSprite(imageUrl) {
-            const textureLoader = new THREE.TextureLoader();
-            const texture = textureLoader.load(imageUrl);
-            texture.magFilter = THREE.NearestFilter;
-            texture.minFilter = THREE.LinearFilter;
-            
-            const spriteMaterial = new THREE.SpriteMaterial({ 
-                map: texture,
-                transparent: true,
-                alphaTest: 0.5
+            return new Promise((resolve) => {
+                const textureLoader = new THREE.TextureLoader();
+                const texture = textureLoader.load(
+                    imageUrl,
+                    () => {
+                        // Texture loaded successfully
+                        texture.magFilter = THREE.NearestFilter;
+                        texture.minFilter = THREE.LinearFilter;
+                        
+                        const spriteMaterial = new THREE.SpriteMaterial({ 
+                            map: texture,
+                            transparent: true,
+                            alphaTest: 0.1
+                        });
+                        const sprite = new THREE.Sprite(spriteMaterial);
+                        sprite.scale.set(8, 8, 1);
+                        sprite.position.y = 4;
+                        
+                        resolve(sprite);
+                    },
+                    undefined,
+                    (error) => {
+                        console.error('Error loading horse texture:', error);
+                        // Create a fallback colored sprite
+                        const fallbackMaterial = new THREE.SpriteMaterial({ color: 0x8B4513 });
+                        const sprite = new THREE.Sprite(fallbackMaterial);
+                        sprite.scale.set(8, 8, 1);
+                        sprite.position.y = 4;
+                        resolve(sprite);
+                    }
+                );
             });
-            const sprite = new THREE.Sprite(spriteMaterial);
-            sprite.scale.set(6, 6, 1);
-            sprite.position.y = 3;
-            
-            return sprite;
         }
 
         function createTree() {
@@ -411,9 +428,9 @@
             });
         }
 
-        function updateOrCreateHorse(clientId, presence) {
+        async function updateOrCreateHorse(clientId, presence) {
             if (!horses.has(clientId)) {
-                const horseSprite = createHorseSprite(presence.horseImage);
+                const horseSprite = await createHorseSprite(presence.horseImage);
                 horses.set(clientId, horseSprite);
                 scene.add(horseSprite);
             }
@@ -579,9 +596,9 @@
             controlsDiv.style.display = 'block';
             gameStarted = true;
 
-            // Create my horse sprite
-            myHorse = createHorseSprite(window.myHorseData.image);
-            myHorse.position.set(0, 3, 0);
+            // Create my horse sprite and wait for it to load
+            myHorse = await createHorseSprite(window.myHorseData.image);
+            myHorse.position.set(0, 4, 0);
             scene.add(myHorse);
 
             // Update multiplayer with horse data
