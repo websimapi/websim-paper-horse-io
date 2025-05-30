@@ -254,6 +254,31 @@
             display: none;
             z-index: 1001;
         }
+
+        #chatButton {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 16px;
+            border: 2px solid #ddd;
+            border-radius: 50%;
+            font-size: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            cursor: pointer;
+            z-index: 1001;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #chatButton:hover {
+            background: rgba(255, 255, 255, 1);
+            transform: translateX(-50%) scale(1.1);
+        }
     </style>
 </head>
 <body>
@@ -328,6 +353,7 @@
         </div>
 
         <input type="text" id="chatInput" placeholder="Type to chat..." maxlength="100" />
+        <button id="chatButton">💬</button>
     </div>
 
     <script type="importmap">
@@ -373,6 +399,7 @@
         const controlsDiv = document.getElementById('controls');
         const playersContainer = document.getElementById('playersContainer');
         chatInput = document.getElementById('chatInput');
+        const chatButton = document.getElementById('chatButton');
 
         function createHorseSprite(imageUrl) {
             return new Promise((resolve) => {
@@ -630,15 +657,7 @@
                     e.preventDefault();
                     isGalloping = true;
                 }
-                
-                // Show chat input when typing
-                if (gameStarted && e.key.length === 1 && e.key.match(/[a-zA-Z0-9\s]/)) {
-                    showChatInput();
-                    chatInput.value = e.key;
-                    e.preventDefault();
-                }
             });
-
             document.addEventListener('keyup', (e) => {
                 keys[e.code] = false;
                 if (e.code === 'Space') {
@@ -657,18 +676,44 @@
             gallopBtn.addEventListener('mouseleave', () => {
                 isGalloping = false;
             });
+
+            // Chat button functionality
+            chatButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showChatInput();
+            });
+
+            // Hide chat when clicking outside
+            document.addEventListener('click', (e) => {
+                if (chatInput.style.display === 'block' && 
+                    !chatInput.contains(e.target) && 
+                    !chatButton.contains(e.target)) {
+                    hideChatInput();
+                }
+            });
+
+            chatInput.addEventListener('blur', () => {
+                // Small delay to allow for other click events to process
+                setTimeout(() => {
+                    if (document.activeElement !== chatInput) {
+                        hideChatInput();
+                    }
+                }, 100);
+            });
         }
 
         function showChatInput() {
-            if (chatInput) {
+            if (chatInput && chatButton) {
                 chatInput.style.display = 'block';
+                chatButton.style.display = 'none';
                 chatInput.focus();
             }
         }
 
         function hideChatInput() {
-            if (chatInput) {
+            if (chatInput && chatButton) {
                 chatInput.style.display = 'none';
+                chatButton.style.display = 'flex';
                 chatInput.value = '';
                 chatInput.blur();
             }
@@ -689,8 +734,11 @@
                         chatTimestamp: null
                     });
                 }, 5000);
+                
+                // Clear input but keep it open
+                chatInput.value = '';
+                chatInput.focus();
             }
-            hideChatInput();
         }
 
         function updateMovement() {
