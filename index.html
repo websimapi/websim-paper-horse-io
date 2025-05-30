@@ -211,7 +211,7 @@
             gap: 3px;
             pointer-events: none;
             z-index: 1000;
-            transform: translate(-50%, -100%);
+            transform: translate(-50%, -50%);
         }
 
         .horse-label img {
@@ -774,7 +774,7 @@
                 if (horse) {
                     const vector = new THREE.Vector3();
                     vector.setFromMatrixPosition(horse.matrixWorld);
-                    vector.y += 3; // Position above horse
+                    vector.y += 1.5; // Position above horse
                     vector.project(camera);
 
                     const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
