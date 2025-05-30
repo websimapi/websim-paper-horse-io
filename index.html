@@ -26,22 +26,69 @@
         }
 
         #ui {
-            position: absolute;
-            top: 20px;
-            left: 20px;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             z-index: 1000;
-            background: rgba(255, 255, 255, 0.9);
-            border-radius: 15px;
-            padding: 20px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            max-width: 300px;
-            display: none;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(15px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            max-width: 400px;
+            width: 90vw;
+            text-align: center;
         }
 
         #horseCreator {
             display: block;
+        }
+
+        #horseCreator h3 {
+            margin-top: 0;
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin: 15px 0;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        #horsePrompt {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            box-sizing: border-box;
+            margin: 10px 0;
         }
 
         #gameUI {
@@ -150,10 +197,6 @@
             font-style: italic;
         }
 
-        #ui, #playersList, #controls {
-            display: none;
-        }
-
         .horse-label {
             position: absolute;
             background: rgba(0, 0, 0, 0.8);
@@ -175,43 +218,6 @@
             height: 20px;
             border-radius: 50%;
         }
-
-        label {
-            display: block;
-            margin-top: 15px;
-            margin-bottom: 5px;
-            font-weight: bold;
-            color: #333;
-        }
-
-        select {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #ddd;
-            border-radius: 10px;
-            font-size: 14px;
-            background: white;
-            margin-bottom: 10px;
-        }
-
-        select:focus {
-            border-color: #667eea;
-            outline: none;
-        }
-
-        #horsePrompt {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #ddd;
-            border-radius: 10px;
-            font-size: 14px;
-            margin-bottom: 10px;
-        }
-
-        #horsePrompt:focus {
-            border-color: #667eea;
-            outline: none;
-        }
     </style>
 </head>
 <body>
@@ -220,43 +226,45 @@
         
         <div id="ui">
             <div id="horseCreator">
-                <h3>Create Your Horse</h3>
-                <input type="text" id="horsePrompt" placeholder="Describe your horse (e.g., majestic stallion)" />
+                <h3>🐎 Create Your Steed</h3>
                 
-                <label for="horseType">Horse Type:</label>
-                <select id="horseType">
-                    <option value="stallion">Stallion</option>
-                    <option value="mare">Mare</option>
-                    <option value="colt">Colt</option>
-                    <option value="filly">Filly</option>
-                    <option value="pony">Pony</option>
-                    <option value="mustang">Mustang</option>
-                    <option value="thoroughbred">Thoroughbred</option>
-                    <option value="arabian">Arabian</option>
-                    <option value="clydesdale">Clydesdale</option>
-                    <option value="friesian">Friesian</option>
-                </select>
-
-                <label for="horseColor">Horse Color:</label>
-                <select id="horseColor">
-                    <option value="bay">Bay</option>
-                    <option value="black">Black</option>
-                    <option value="white">White</option>
-                    <option value="chestnut">Chestnut</option>
-                    <option value="gray">Gray</option>
-                    <option value="palomino">Palomino</option>
-                    <option value="buckskin">Buckskin</option>
-                    <option value="pinto">Pinto</option>
-                    <option value="appaloosa">Appaloosa</option>
-                    <option value="dun">Dun</option>
-                    <option value="roan">Roan</option>
-                    <option value="cream">Cream</option>
-                </select>
-
+                <div class="form-group">
+                    <label for="horsePrompt">Describe your horse:</label>
+                    <input type="text" id="horsePrompt" placeholder="e.g., majestic, wild, elegant, powerful..." />
+                </div>
+                
+                <div class="form-group">
+                    <label for="horseColor">Primary Color:</label>
+                    <select id="horseColor">
+                        <option value="brown">Brown</option>
+                        <option value="black">Black</option>
+                        <option value="white">White</option>
+                        <option value="chestnut">Chestnut</option>
+                        <option value="gray">Gray</option>
+                        <option value="palomino">Palomino</option>
+                        <option value="bay">Bay</option>
+                        <option value="pinto">Pinto</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="horseType">Horse Type:</label>
+                    <select id="horseType">
+                        <option value="stallion">Stallion</option>
+                        <option value="mare">Mare</option>
+                        <option value="mustang">Mustang</option>
+                        <option value="thoroughbred">Thoroughbred</option>
+                        <option value="arabian">Arabian</option>
+                        <option value="clydesdale">Clydesdale</option>
+                        <option value="friesian">Friesian</option>
+                        <option value="appaloosa">Appaloosa</option>
+                    </select>
+                </div>
+                
                 <img id="horsePreview" />
-                <button id="generateHorse">Generate Horse</button>
-                <button id="startGame" disabled>Start Racing!</button>
-                <div class="loading" id="loadingText" style="display: none;">Generating your magnificent steed...</div>
+                <button id="generateHorse">🎨 Generate My Horse</button>
+                <button id="startGame" disabled>🏁 Enter the Field!</button>
+                <div class="loading" id="loadingText" style="display: none;">Crafting your magnificent steed... 🎨</div>
             </div>
             
             <div id="gameUI">
@@ -315,6 +323,8 @@
         const horseCreator = document.getElementById('horseCreator');
         const gameUI = document.getElementById('gameUI');
         const horsePrompt = document.getElementById('horsePrompt');
+        const horseColor = document.getElementById('horseColor');
+        const horseType = document.getElementById('horseType');
         const horsePreview = document.getElementById('horsePreview');
         const generateBtn = document.getElementById('generateHorse');
         const startBtn = document.getElementById('startGame');
@@ -682,19 +692,18 @@
         // Horse generation
         async function generateHorse() {
             const userPrompt = horsePrompt.value.trim() || "beautiful running";
-            const horseType = document.getElementById('horseType').value;
             const horseColor = document.getElementById('horseColor').value;
+            const horseType = document.getElementById('horseType').value;
             
-            // Create weighted prompt incorporating all selections
-            const combinedPrompt = `${horseColor} ${horseType} horse ${userPrompt}`;
-            const horseWeightedPrompt = combinedPrompt.split(' ').map(word => `horse ${word}`).join(' ') + ' horse';
+            const fullPrompt = `${horseColor} ${horseType} horse ${userPrompt}`;
+            const horseWeightedPrompt = `horse ${fullPrompt.split(' ').map(word => `horse ${word}`).join(' ')} horse`;
             
             generateBtn.disabled = true;
             loadingText.style.display = 'block';
             
             try {
                 const result = await websim.imageGen({
-                    prompt: `${horseWeightedPrompt}, horse side view, horse game sprite, horse clean background, detailed horse, beautiful horse, ${horseColor} colored horse, ${horseType} horse breed`,
+                    prompt: `${horseWeightedPrompt}, horse side view, horse game sprite, horse clean background, detailed horse, beautiful horse`,
                     transparent: true,
                     aspect_ratio: "1:1"
                 });
