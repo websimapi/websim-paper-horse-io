@@ -279,6 +279,16 @@
             background: rgba(255, 255, 255, 1);
             transform: translateX(-50%) scale(1.1);
         }
+
+        #chatButton.disabled {
+            background: rgba(255, 100, 100, 0.95);
+            border-color: #ff6666;
+        }
+
+        #chatButton.disabled:hover {
+            background: rgba(255, 100, 100, 1);
+            transform: translateX(-50%) scale(1.1);
+        }
     </style>
 </head>
 <body>
@@ -384,6 +394,7 @@
         let horseLabels = new Map();
         let chatInput = null;
         let chatTimeouts = new Map();
+        let chatDisabled = false;
 
         // UI elements
         const horseCreator = document.getElementById('horseCreator');
@@ -680,7 +691,37 @@
             // Chat button functionality
             chatButton.addEventListener('click', (e) => {
                 e.stopPropagation();
-                showChatInput();
+                if (!chatDisabled) {
+                    showChatInput();
+                }
+            });
+
+            // Right-click and long-tap to toggle chat disable
+            let longTapTimer = null;
+            
+            chatButton.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                toggleChatDisabled();
+            });
+
+            chatButton.addEventListener('touchstart', (e) => {
+                longTapTimer = setTimeout(() => {
+                    toggleChatDisabled();
+                }, 500);
+            });
+
+            chatButton.addEventListener('touchend', (e) => {
+                if (longTapTimer) {
+                    clearTimeout(longTapTimer);
+                    longTapTimer = null;
+                }
+            });
+
+            chatButton.addEventListener('touchcancel', (e) => {
+                if (longTapTimer) {
+                    clearTimeout(longTapTimer);
+                    longTapTimer = null;
+                }
             });
 
             // Hide chat when clicking outside
@@ -716,6 +757,16 @@
                 chatButton.style.display = 'flex';
                 chatInput.value = '';
                 chatInput.blur();
+            }
+        }
+
+        function toggleChatDisabled() {
+            chatDisabled = !chatDisabled;
+            if (chatDisabled) {
+                chatButton.classList.add('disabled');
+                hideChatInput();
+            } else {
+                chatButton.classList.remove('disabled');
             }
         }
 
@@ -830,21 +881,27 @@
 
                     label.style.left = x + 'px';
                     label.style.top = y + 'px';
-                    label.style.display = vector.z < 1 ? 'flex' : 'none';
                     
-                    // Update chat message
-                    const presence = room.presence[clientId];
-                    const chatDiv = label.querySelector('.horse-chat');
-                    if (presence && presence.chatMessage && presence.chatTimestamp) {
-                        const timeSince = Date.now() - presence.chatTimestamp;
-                        if (timeSince < 5000) { // Show for 5 seconds
-                            chatDiv.textContent = presence.chatMessage;
-                            chatDiv.style.display = 'block';
+                    // Hide labels when chat is disabled
+                    if (chatDisabled) {
+                        label.style.display = 'none';
+                    } else {
+                        label.style.display = vector.z < 1 ? 'flex' : 'none';
+                        
+                        // Update chat message
+                        const presence = room.presence[clientId];
+                        const chatDiv = label.querySelector('.horse-chat');
+                        if (presence && presence.chatMessage && presence.chatTimestamp) {
+                            const timeSince = Date.now() - presence.chatTimestamp;
+                            if (timeSince < 5000) { // Show for 5 seconds
+                                chatDiv.textContent = presence.chatMessage;
+                                chatDiv.style.display = 'block';
+                            } else {
+                                chatDiv.style.display = 'none';
+                            }
                         } else {
                             chatDiv.style.display = 'none';
                         }
-                    } else {
-                        chatDiv.style.display = 'none';
                     }
                 }
             });
