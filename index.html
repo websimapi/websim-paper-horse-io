@@ -37,6 +37,7 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
             max-width: 300px;
+            display: none;
         }
 
         #horseCreator {
@@ -110,6 +111,7 @@
             max-height: 300px;
             overflow-y: auto;
             min-width: 200px;
+            display: none;
         }
 
         .player-item {
@@ -139,12 +141,39 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
             text-align: center;
+            display: none;
         }
 
         .loading {
             text-align: center;
             color: #666;
             font-style: italic;
+        }
+
+        #ui, #playersList, #controls {
+            display: none;
+        }
+
+        .horse-label {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            pointer-events: none;
+            z-index: 1000;
+            transform: translate(-50%, -100%);
+        }
+
+        .horse-label img {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
         }
     </style>
 </head>
@@ -212,6 +241,7 @@
         let terrainChunks = new Map();
         let chunkSize = 50;
         let renderDistance = 3; // Number of chunks in each direction
+        let horseLabels = new Map();
 
         // UI elements
         const horseCreator = document.getElementById('horseCreator');
@@ -433,6 +463,12 @@
                 const horseSprite = await createHorseSprite(presence.horseImage);
                 horses.set(clientId, horseSprite);
                 scene.add(horseSprite);
+                
+                // Create label for this horse
+                const peer = room.peers[clientId];
+                if (peer) {
+                    createHorseLabel(clientId, peer.username, peer.avatarUrl);
+                }
             }
             
             const horse = horses.get(clientId);
@@ -446,6 +482,12 @@
             if (horses.has(clientId)) {
                 scene.remove(horses.get(clientId));
                 horses.delete(clientId);
+            }
+            
+            // Remove label
+            if (horseLabels.has(clientId)) {
+                document.body.removeChild(horseLabels.get(clientId));
+                horseLabels.delete(clientId);
             }
         }
 
@@ -538,16 +580,48 @@
             document.getElementById('staminaBar').style.width = `${(myHorseStats.stamina / myHorseStats.maxStamina) * 100}%`;
         }
 
+        function createHorseLabel(clientId, username, avatarUrl) {
+            const label = document.createElement('div');
+            label.className = 'horse-label';
+            label.innerHTML = `
+                <img src="${avatarUrl}" />
+                <span>${username}</span>
+            `;
+            document.body.appendChild(label);
+            horseLabels.set(clientId, label);
+            return label;
+        }
+
+        function updateHorseLabels() {
+            horseLabels.forEach((label, clientId) => {
+                const horse = horses.get(clientId) || (clientId === room.clientId ? myHorse : null);
+                if (horse) {
+                    const vector = new THREE.Vector3();
+                    vector.setFromMatrixPosition(horse.matrixWorld);
+                    vector.y += 3; // Position above horse
+                    vector.project(camera);
+
+                    const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+                    const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+
+                    label.style.left = x + 'px';
+                    label.style.top = y + 'px';
+                    label.style.display = vector.z < 1 ? 'flex' : 'none';
+                }
+            });
+        }
+
         // Horse generation
         async function generateHorse() {
-            const prompt = horsePrompt.value.trim() || "beautiful horse running in a field";
+            const userPrompt = horsePrompt.value.trim() || "beautiful running";
+            const horseWeightedPrompt = `horse ${userPrompt.split(' ').map(word => `horse ${word}`).join(' ')} horse`;
             
             generateBtn.disabled = true;
             loadingText.style.display = 'block';
             
             try {
                 const result = await websim.imageGen({
-                    prompt: `${prompt}, side view, game sprite, clean background, detailed, beautiful`,
+                    prompt: `${horseWeightedPrompt}, horse side view, horse game sprite, horse clean background, detailed horse, beautiful horse`,
                     transparent: true,
                     aspect_ratio: "1:1"
                 });
@@ -586,6 +660,7 @@
             requestAnimationFrame(animate);
             
             updateMovement();
+            updateHorseLabels();
             controls.update();
             renderer.render(scene, camera);
         }
@@ -616,6 +691,12 @@
             });
 
             updateStatsUI();
+            
+            // Create label for my horse
+            const currentUser = room.peers[room.clientId];
+            if (currentUser) {
+                createHorseLabel(room.clientId, currentUser.username, currentUser.avatarUrl);
+            }
         });
 
         // Handle window resize
