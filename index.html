@@ -241,7 +241,7 @@
                             alphaTest: 0.1
                         });
                         const sprite = new THREE.Sprite(spriteMaterial);
-                        sprite.scale.set(8, 8, 1);
+                        sprite.scale.set(4, 4, 1);
                         sprite.position.y = 4;
                         
                         resolve(sprite);
@@ -252,7 +252,7 @@
                         // Create a fallback colored sprite
                         const fallbackMaterial = new THREE.SpriteMaterial({ color: 0x8B4513 });
                         const sprite = new THREE.Sprite(fallbackMaterial);
-                        sprite.scale.set(8, 8, 1);
+                        sprite.scale.set(4, 4, 1);
                         sprite.position.y = 4;
                         resolve(sprite);
                     }
@@ -288,7 +288,7 @@
             scene.background = new THREE.Color(0x87CEEB);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 8, 12);
+            camera.position.set(0, 6, 8);
 
             renderer = new THREE.WebGLRenderer({ 
                 canvas: document.getElementById('gameCanvas'),
@@ -317,8 +317,8 @@
             controls.enablePan = false;
             controls.enableZoom = false;
             controls.maxPolarAngle = Math.PI / 2.2;
-            controls.minDistance = 8;
-            controls.maxDistance = 20;
+            controls.minDistance = 5;
+            controls.maxDistance = 15;
         }
 
         function generateInitialTerrain() {
@@ -519,8 +519,8 @@
 
                 // Update camera to follow horse smoothly
                 const targetCameraX = myHorse.position.x;
-                const targetCameraZ = myHorse.position.z + 10;
-                const targetCameraY = 8;
+                const targetCameraZ = myHorse.position.z + 6;
+                const targetCameraY = 6;
                 
                 camera.position.x += (targetCameraX - camera.position.x) * 0.1;
                 camera.position.z += (targetCameraZ - camera.position.z) * 0.1;
