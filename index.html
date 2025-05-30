@@ -214,10 +214,38 @@
             transform: translate(-50%, -50%);
         }
 
-        .horse-label img {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
+        .food-boost-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(76, 175, 80, 0.95);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 2000;
+            animation: boostPopup 2s ease-out forwards;
+            pointer-events: none;
+        }
+
+        .food-boost-popup.rare {
+            background: rgba(255, 193, 7, 0.95);
+            animation: rareBoostPopup 3s ease-out forwards;
+        }
+
+        @keyframes boostPopup {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            20% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+            100% { opacity: 0; transform: translate(-50%, -70%) scale(1); }
+        }
+
+        @keyframes rareBoostPopup {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            20% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+            80% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+            100% { opacity: 0; transform: translate(-50%, -70%) scale(1); }
         }
 
         .horse-chat {
@@ -297,7 +325,7 @@
         
         <div id="ui">
             <div id="horseCreator">
-                <h3>🐎 Create Your Steed</h3>
+                <h3> Create Your Steed</h3>
                 
                 <div class="form-group">
                     <label for="horsePrompt">Describe your horse:</label>
@@ -333,9 +361,9 @@
                 </div>
                 
                 <img id="horsePreview" />
-                <button id="generateHorse">🎨 Generate My Horse</button>
-                <button id="startGame" disabled>🏁 Enter the Field!</button>
-                <div class="loading" id="loadingText" style="display: none;">Crafting your magnificent steed... 🎨</div>
+                <button id="generateHorse"> Generate My Horse</button>
+                <button id="startGame" disabled> Enter the Field!</button>
+                <div class="loading" id="loadingText" style="display: none;">Crafting your magnificent steed... </div>
             </div>
             
             <div id="gameUI">
@@ -363,7 +391,7 @@
         </div>
 
         <input type="text" id="chatInput" placeholder="Type to chat..." maxlength="100" />
-        <button id="chatButton">💬</button>
+        <button id="chatButton"> </button>
     </div>
 
     <script type="importmap">
@@ -395,6 +423,17 @@
         let chatInput = null;
         let chatTimeouts = new Map();
         let chatDisabled = false;
+        let foodItems = new Map(); // Map to store food items by chunk
+        let consumedFoodIds = new Set(); // Track consumed food IDs
+
+        // Food types with different rarities and effects
+        const foodTypes = [
+            { name: 'Grass', color: 0x32CD32, rarity: 0.7, staminaBoost: 10, type: 'common' },
+            { name: 'Apple', color: 0xFF0000, rarity: 0.2, staminaBoost: 25, type: 'uncommon' },
+            { name: 'Carrot', color: 0xFF8C00, rarity: 0.15, staminaBoost: 20, type: 'uncommon' },
+            { name: 'Sugar Cube', color: 0xFFFFFF, rarity: 0.05, staminaBoost: 30, speedBoost: 5, type: 'rare' },
+            { name: 'Golden Oats', color: 0xFFD700, rarity: 0.02, staminaBoost: 50, speedBoost: 10, maxStaminaBoost: 10, type: 'legendary' }
+        ];
 
         // UI elements
         const horseCreator = document.getElementById('horseCreator');
@@ -543,6 +582,14 @@
                 chunkGroup.add(tree);
             }
 
+            // Add food items to chunk
+            const foods = generateFoodForChunk(chunkX, chunkZ);
+            foods.forEach(food => {
+                if (!consumedFoodIds.has(food.userData.id)) {
+                    chunkGroup.add(food);
+                }
+            });
+
             scene.add(chunkGroup);
             terrainChunks.set(chunkKey, chunkGroup);
         }
@@ -566,6 +613,8 @@
                 if (distance > renderDistance + 1) {
                     scene.remove(chunkGroup);
                     terrainChunks.delete(chunkKey);
+                    // Also remove food items from memory
+                    foodItems.delete(chunkKey);
                 }
             }
         }
@@ -578,6 +627,15 @@
             room.subscribePresence((currentPresence) => {
                 updatePlayersList();
                 updateHorsePositions();
+            });
+
+            // Subscribe to food consumption records
+            room.collection('food_consumption').subscribe((consumptions) => {
+                consumptions.forEach(consumption => {
+                    consumedFoodIds.add(consumption.food_id);
+                    // Remove food from scene if it exists
+                    removeFoodFromScene(consumption.food_id);
+                });
             });
 
             room.onmessage = (event) => {
@@ -594,57 +652,162 @@
             };
         }
 
-        function updatePlayersList() {
-            playersContainer.innerHTML = '';
-            Object.values(room.peers).forEach(peer => {
-                const playerDiv = document.createElement('div');
-                playerDiv.className = 'player-item';
-                playerDiv.innerHTML = `
-                    <img src="${peer.avatarUrl}" class="player-avatar" />
-                    <span>${peer.username}</span>
-                `;
-                playersContainer.appendChild(playerDiv);
+        function removeFoodFromScene(foodId) {
+            // Find and remove food from all chunks
+            terrainChunks.forEach((chunkGroup, chunkKey) => {
+                const foods = foodItems.get(chunkKey) || [];
+                foods.forEach((food, index) => {
+                    if (food.userData.id === foodId) {
+                        chunkGroup.remove(food);
+                        foods.splice(index, 1);
+                    }
+                });
             });
         }
 
-        function updateHorsePositions() {
-            Object.entries(room.presence).forEach(([clientId, presence]) => {
-                if (presence.horseImage && clientId !== room.clientId) {
-                    updateOrCreateHorse(clientId, presence);
-                }
-            });
+        function createFood(foodType, position) {
+            const geometry = new THREE.SphereGeometry(0.5, 8, 6);
+            const material = new THREE.MeshLambertMaterial({ color: foodType.color });
+            const food = new THREE.Mesh(geometry, material);
+            food.position.copy(position);
+            food.position.y = 0.5;
+            food.castShadow = true;
+            food.userData = {
+                ...foodType,
+                id: Math.random().toString(36).substr(2, 9),
+                chunkKey: null
+            };
+            return food;
         }
 
-        async function updateOrCreateHorse(clientId, presence) {
-            if (!horses.has(clientId)) {
-                const horseSprite = await createHorseSprite(presence.horseImage);
-                horses.set(clientId, horseSprite);
-                scene.add(horseSprite);
+        function generateFoodForChunk(chunkX, chunkZ) {
+            const chunkKey = `${chunkX},${chunkZ}`;
+            const foods = [];
+            
+            // Generate 3-8 food items per chunk
+            const foodCount = Math.floor(Math.random() * 6) + 3;
+            
+            for (let i = 0; i < foodCount; i++) {
+                // Select random food type based on rarity
+                const rand = Math.random();
+                let selectedFood = foodTypes[0]; // Default to grass
                 
-                // Create label for this horse
-                const peer = room.peers[clientId];
-                if (peer) {
-                    createHorseLabel(clientId, peer.username, peer.avatarUrl);
+                for (const foodType of foodTypes) {
+                    if (rand <= foodType.rarity) {
+                        selectedFood = foodType;
+                        break;
+                    }
                 }
+                
+                const position = new THREE.Vector3(
+                    chunkX * chunkSize + (Math.random() - 0.5) * chunkSize * 0.8,
+                    0,
+                    chunkZ * chunkSize + (Math.random() - 0.5) * chunkSize * 0.8
+                );
+                
+                const food = createFood(selectedFood, position);
+                food.userData.chunkKey = chunkKey;
+                foods.push(food);
             }
             
-            const horse = horses.get(clientId);
-            if (presence.x !== undefined && presence.z !== undefined) {
-                horse.position.x = presence.x;
-                horse.position.z = presence.z;
-            }
+            foodItems.set(chunkKey, foods);
+            return foods;
         }
 
-        function removeHorse(clientId) {
-            if (horses.has(clientId)) {
-                scene.remove(horses.get(clientId));
-                horses.delete(clientId);
-            }
+        async function consumeFood(food) {
+            if (consumedFoodIds.has(food.userData.id)) return;
+
+            // Mark as consumed locally immediately
+            consumedFoodIds.add(food.userData.id);
             
-            // Remove label
-            if (horseLabels.has(clientId)) {
-                document.body.removeChild(horseLabels.get(clientId));
-                horseLabels.delete(clientId);
+            // Apply stat boosts
+            let message = `+${food.userData.staminaBoost} Stamina`;
+            let isRare = false;
+
+            myHorseStats.stamina = Math.min(
+                myHorseStats.maxStamina, 
+                myHorseStats.stamina + food.userData.staminaBoost
+            );
+
+            if (food.userData.speedBoost) {
+                myHorseStats.speed += food.userData.speedBoost;
+                message += `, +${food.userData.speedBoost} Speed`;
+                isRare = true;
+            }
+
+            if (food.userData.maxStaminaBoost) {
+                myHorseStats.maxStamina += food.userData.maxStaminaBoost;
+                myHorseStats.stamina += food.userData.maxStaminaBoost; // Also add to current stamina
+                message += `, +${food.userData.maxStaminaBoost} Max Stamina`;
+                isRare = true;
+            }
+
+            // Show boost popup
+            showBoostPopup(message, isRare);
+
+            // Update UI
+            updateStatsUI();
+
+            // Update multiplayer presence with new stats
+            room.updatePresence({
+                stats: { ...myHorseStats },
+                stamina: myHorseStats.stamina
+            });
+
+            // Record consumption in database
+            try {
+                await room.collection('food_consumption').create({
+                    food_id: food.userData.id,
+                    food_type: food.userData.name,
+                    rarity: food.userData.type,
+                    stamina_boost: food.userData.staminaBoost,
+                    speed_boost: food.userData.speedBoost || 0,
+                    max_stamina_boost: food.userData.maxStaminaBoost || 0,
+                    horse_stats: { ...myHorseStats }
+                });
+            } catch (error) {
+                console.error('Error recording food consumption:', error);
+            }
+
+            // Remove from scene
+            removeFoodFromScene(food.userData.id);
+        }
+
+        function showBoostPopup(message, isRare = false) {
+            const popup = document.createElement('div');
+            popup.className = `food-boost-popup ${isRare ? 'rare' : ''}`;
+            popup.textContent = message;
+            document.body.appendChild(popup);
+
+            setTimeout(() => {
+                document.body.removeChild(popup);
+            }, isRare ? 3000 : 2000);
+        }
+
+        function checkFoodCollisions() {
+            if (!myHorse || !gameStarted) return;
+
+            const horsePosition = myHorse.position;
+            const consumeDistance = 3; // Distance at which horse can consume food
+
+            // Check all food items in nearby chunks
+            const playerChunkX = Math.floor(horsePosition.x / chunkSize);
+            const playerChunkZ = Math.floor(horsePosition.z / chunkSize);
+
+            for (let x = playerChunkX - 1; x <= playerChunkX + 1; x++) {
+                for (let z = playerChunkZ - 1; z <= playerChunkZ + 1; z++) {
+                    const chunkKey = `${x},${z}`;
+                    const foods = foodItems.get(chunkKey) || [];
+
+                    foods.forEach(food => {
+                        if (consumedFoodIds.has(food.userData.id)) return;
+
+                        const distance = horsePosition.distanceTo(food.position);
+                        if (distance < consumeDistance) {
+                            consumeFood(food);
+                        }
+                    });
+                }
             }
         }
 
@@ -842,6 +1005,9 @@
                 
                 controls.target.set(myHorse.position.x, 2, myHorse.position.z);
             }
+
+            // Check for food collisions
+            checkFoodCollisions();
         }
 
         function updateStatsUI() {
