@@ -206,8 +206,9 @@
             font-size: 12px;
             font-weight: bold;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            gap: 5px;
+            gap: 3px;
             pointer-events: none;
             z-index: 1000;
             transform: translate(-50%, -100%);
@@ -217,6 +218,41 @@
             width: 20px;
             height: 20px;
             border-radius: 50%;
+        }
+
+        .horse-chat {
+            background: rgba(255, 255, 255, 0.95);
+            color: black;
+            padding: 8px 12px;
+            border-radius: 20px;
+            margin-bottom: 5px;
+            font-size: 14px;
+            max-width: 200px;
+            word-wrap: break-word;
+            display: none;
+        }
+
+        .horse-name-container {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 15px;
+        }
+
+        #chatInput {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 25px;
+            font-size: 16px;
+            width: 300px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            display: none;
+            z-index: 1001;
         }
     </style>
 </head>
@@ -290,6 +326,8 @@
             <div>Use WASD or Arrow Keys to move your horse</div>
             <div>Hold Gallop button to run faster (uses stamina)</div>
         </div>
+
+        <input type="text" id="chatInput" placeholder="Type to chat..." maxlength="100" />
     </div>
 
     <script type="importmap">
@@ -318,6 +356,8 @@
         let chunkSize = 50;
         let renderDistance = 3; // Number of chunks in each direction
         let horseLabels = new Map();
+        let chatInput = null;
+        let chatTimeouts = new Map();
 
         // UI elements
         const horseCreator = document.getElementById('horseCreator');
@@ -332,6 +372,7 @@
         const gallopBtn = document.getElementById('gallop');
         const controlsDiv = document.getElementById('controls');
         const playersContainer = document.getElementById('playersContainer');
+        chatInput = document.getElementById('chatInput');
 
         function createHorseSprite(imageUrl) {
             return new Promise((resolve) => {
@@ -571,10 +612,30 @@
 
         function setupControls() {
             document.addEventListener('keydown', (e) => {
+                // If typing in chat, don't move horse
+                if (chatInput && document.activeElement === chatInput) {
+                    if (e.code === 'Enter') {
+                        sendChatMessage();
+                        e.preventDefault();
+                    }
+                    if (e.code === 'Escape') {
+                        hideChatInput();
+                        e.preventDefault();
+                    }
+                    return;
+                }
+
                 keys[e.code] = true;
                 if (e.code === 'Space') {
                     e.preventDefault();
                     isGalloping = true;
+                }
+                
+                // Show chat input when typing
+                if (gameStarted && e.key.length === 1 && e.key.match(/[a-zA-Z0-9\s]/)) {
+                    showChatInput();
+                    chatInput.value = e.key;
+                    e.preventDefault();
                 }
             });
 
@@ -596,6 +657,40 @@
             gallopBtn.addEventListener('mouseleave', () => {
                 isGalloping = false;
             });
+        }
+
+        function showChatInput() {
+            if (chatInput) {
+                chatInput.style.display = 'block';
+                chatInput.focus();
+            }
+        }
+
+        function hideChatInput() {
+            if (chatInput) {
+                chatInput.style.display = 'none';
+                chatInput.value = '';
+                chatInput.blur();
+            }
+        }
+
+        function sendChatMessage() {
+            const message = chatInput.value.trim();
+            if (message) {
+                room.updatePresence({
+                    chatMessage: message,
+                    chatTimestamp: Date.now()
+                });
+                
+                // Hide chat message after 5 seconds
+                setTimeout(() => {
+                    room.updatePresence({
+                        chatMessage: null,
+                        chatTimestamp: null
+                    });
+                }, 5000);
+            }
+            hideChatInput();
         }
 
         function updateMovement() {
@@ -662,8 +757,11 @@
             const label = document.createElement('div');
             label.className = 'horse-label';
             label.innerHTML = `
-                <img src="${avatarUrl}" />
-                <span>${username}</span>
+                <div class="horse-chat"></div>
+                <div class="horse-name-container">
+                    <img src="${avatarUrl}" />
+                    <span>${username}</span>
+                </div>
             `;
             document.body.appendChild(label);
             horseLabels.set(clientId, label);
@@ -685,6 +783,21 @@
                     label.style.left = x + 'px';
                     label.style.top = y + 'px';
                     label.style.display = vector.z < 1 ? 'flex' : 'none';
+                    
+                    // Update chat message
+                    const presence = room.presence[clientId];
+                    const chatDiv = label.querySelector('.horse-chat');
+                    if (presence && presence.chatMessage && presence.chatTimestamp) {
+                        const timeSince = Date.now() - presence.chatTimestamp;
+                        if (timeSince < 5000) { // Show for 5 seconds
+                            chatDiv.textContent = presence.chatMessage;
+                            chatDiv.style.display = 'block';
+                        } else {
+                            chatDiv.style.display = 'none';
+                        }
+                    } else {
+                        chatDiv.style.display = 'none';
+                    }
                 }
             });
         }
