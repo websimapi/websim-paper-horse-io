@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paper Horse-io</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #87CEEB, #98FB98);
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 300px;
+        }
+
+        #horseCreator {
+            display: block;
+        }
+
+        #gameUI {
+            display: none;
+        }
+
+        .stat-bar {
+            margin: 10px 0;
+            background: #e0e0e0;
+            border-radius: 10px;
+            height: 20px;
+            overflow: hidden;
+        }
+
+        .stat-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.3s ease;
+        }
+
+        .speed-bar { background: #4CAF50; }
+        .stamina-bar { background: #2196F3; }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 10px 0;
+            width: 100%;
+            transition: transform 0.2s ease;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #horsePreview {
+            width: 100px;
+            height: 100px;
+            margin: 10px auto;
+            border-radius: 10px;
+            border: 2px solid #ddd;
+            display: none;
+            object-fit: cover;
+        }
+
+        #playersList {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 15px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-height: 300px;
+            overflow-y: auto;
+            min-width: 200px;
+        }
+
+        .player-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .player-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 15px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center;
+        }
+
+        .loading {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="ui">
+            <div id="horseCreator">
+                <h3>Create Your Horse</h3>
+                <input type="text" id="horsePrompt" placeholder="Describe your horse (e.g., majestic white stallion)" />
+                <img id="horsePreview" />
+                <button id="generateHorse">Generate Horse</button>
+                <button id="startGame" disabled>Start Racing!</button>
+                <div class="loading" id="loadingText" style="display: none;">Generating your magnificent steed...</div>
+            </div>
+            
+            <div id="gameUI">
+                <h3>Your Horse Stats</h3>
+                <div>Speed: <span id="speedValue">0</span></div>
+                <div class="stat-bar">
+                    <div class="stat-fill speed-bar" id="speedBar" style="width: 0%"></div>
+                </div>
+                <div>Stamina: <span id="staminaValue">100</span></div>
+                <div class="stat-bar">
+                    <div class="stat-fill stamina-bar" id="staminaBar" style="width: 100%"></div>
+                </div>
+                <button id="gallop">Gallop! (Hold)</button>
+            </div>
+        </div>
+
+        <div id="playersList">
+            <h4>Horses in Field</h4>
+            <div id="playersContainer"></div>
+        </div>
+
+        <div id="controls" style="display: none;">
+            <div>Use WASD or Arrow Keys to move your horse</div>
+            <div>Hold Gallop button to run faster (uses stamina)</div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+            "three/controls": "https://unpkg.com/three@0.158.0/examples/jsm/controls/OrbitControls.js"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/controls';
+
+        // Game state
+        let scene, camera, renderer, controls;
+        let horses = new Map();
+        let myHorse = null;
+        let myHorseStats = { speed: 50, stamina: 100, maxStamina: 100 };
+        let room = null;
+        let gameStarted = false;
+        let keys = {};
+        let isGalloping = false;
+
+        // UI elements
+        const horseCreator = document.getElementById('horseCreator');
+        const gameUI = document.getElementById('gameUI');
+        const horsePrompt = document.getElementById('horsePrompt');
+        const horsePreview = document.getElementById('horsePreview');
+        const generateBtn = document.getElementById('generateHorse');
+        const startBtn = document.getElementById('startGame');
+        const loadingText = document.getElementById('loadingText');
+        const gallopBtn = document.getElementById('gallop');
+        const controlsDiv = document.getElementById('controls');
+        const playersContainer = document.getElementById('playersContainer');
+
+        // Initialize Three.js scene
+        function initScene() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 15, 20);
+
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: document.getElementById('gameCanvas'),
+                antialias: true 
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            // Create field
+            const fieldGeometry = new THREE.PlaneGeometry(100, 100);
+            const fieldMaterial = new THREE.MeshLambertMaterial({ color: 0x90EE90 });
+            const field = new THREE.Mesh(fieldGeometry, fieldMaterial);
+            field.rotation.x = -Math.PI / 2;
+            field.receiveShadow = true;
+            scene.add(field);
+
+            // Add some trees around the field
+            for (let i = 0; i < 20; i++) {
+                const treeGroup = createTree();
+                treeGroup.position.set(
+                    (Math.random() - 0.5) * 120,
+                    0,
+                    (Math.random() - 0.5) * 120
+                );
+                scene.add(treeGroup);
+            }
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(50, 50, 50);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+        }
+
+        function createTree() {
+            const group = new THREE.Group();
+            
+            // Trunk
+            const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.8, 4);
+            const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.y = 2;
+            trunk.castShadow = true;
+            group.add(trunk);
+
+            // Leaves
+            const leavesGeometry = new THREE.SphereGeometry(3);
+            const leavesMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+            const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+            leaves.position.y = 5;
+            leaves.castShadow = true;
+            group.add(leaves);
+
+            return group;
+        }
+
+        function createHorseSprite(imageUrl) {
+            const textureLoader = new THREE.TextureLoader();
+            const texture = textureLoader.load(imageUrl);
+            
+            const spriteMaterial = new THREE.SpriteMaterial({ 
+                map: texture,
+                transparent: true 
+            });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(4, 4, 1);
+            sprite.position.y = 2;
+            sprite.castShadow = true;
+            
+            return sprite;
+        }
+
+        // Multiplayer setup
+        async function initMultiplayer() {
+            room = new WebsimSocket();
+            await room.initialize();
+
+            room.subscribePresence((currentPresence) => {
+                updatePlayersList();
+                updateHorsePositions();
+            });
+
+            room.onmessage = (event) => {
+                const data = event.data;
+                switch (data.type) {
+                    case "connected":
+                        console.log(`${data.username} joined the field!`);
+                        break;
+                    case "disconnected":
+                        console.log(`${data.username} left the field!`);
+                        removeHorse(data.clientId);
+                        break;
+                }
+            };
+        }
+
+        function updatePlayersList() {
+            playersContainer.innerHTML = '';
+            Object.values(room.peers).forEach(peer => {
+                const playerDiv = document.createElement('div');
+                playerDiv.className = 'player-item';
+                playerDiv.innerHTML = `
+                    <img src="${peer.avatarUrl}" class="player-avatar" />
+                    <span>${peer.username}</span>
+                `;
+                playersContainer.appendChild(playerDiv);
+            });
+        }
+
+        function updateHorsePositions() {
+            Object.entries(room.presence).forEach(([clientId, presence]) => {
+                if (presence.horseImage && clientId !== room.clientId) {
+                    updateOrCreateHorse(clientId, presence);
+                }
+            });
+        }
+
+        function updateOrCreateHorse(clientId, presence) {
+            if (!horses.has(clientId)) {
+                const horseSprite = createHorseSprite(presence.horseImage);
+                horses.set(clientId, horseSprite);
+                scene.add(horseSprite);
+            }
+            
+            const horse = horses.get(clientId);
+            if (presence.x !== undefined && presence.z !== undefined) {
+                horse.position.x = presence.x;
+                horse.position.z = presence.z;
+            }
+        }
+
+        function removeHorse(clientId) {
+            if (horses.has(clientId)) {
+                scene.remove(horses.get(clientId));
+                horses.delete(clientId);
+            }
+        }
+
+        // Horse generation
+        async function generateHorse() {
+            const prompt = horsePrompt.value.trim() || "beautiful horse running in a field";
+            
+            generateBtn.disabled = true;
+            loadingText.style.display = 'block';
+            
+            try {
+                const result = await websim.imageGen({
+                    prompt: `${prompt}, side view, game sprite, clean background, detailed, beautiful`,
+                    transparent: true,
+                    aspect_ratio: "1:1"
+                });
+                
+                horsePreview.src = result.url;
+                horsePreview.style.display = 'block';
+                startBtn.disabled = false;
+                
+                // Generate random stats
+                myHorseStats.speed = Math.floor(Math.random() * 50) + 25; // 25-75
+                myHorseStats.stamina = 100;
+                myHorseStats.maxStamina = Math.floor(Math.random() * 50) + 75; // 75-125
+                
+                // Store horse data
+                window.myHorseData = {
+                    image: result.url,
+                    stats: { ...myHorseStats }
+                };
+                
+            } catch (error) {
+                console.error('Error generating horse:', error);
+                alert('Failed to generate horse. Please try again.');
+            } finally {
+                generateBtn.disabled = false;
+                loadingText.style.display = 'none';
+            }
+        }
+
+        // Game controls
+        function setupControls() {
+            document.addEventListener('keydown', (e) => {
+                keys[e.code] = true;
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                    isGalloping = true;
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                keys[e.code] = false;
+                if (e.code === 'Space') {
+                    isGalloping = false;
+                }
+            });
+
+            gallopBtn.addEventListener('mousedown', () => {
+                isGalloping = true;
+            });
+
+            gallopBtn.addEventListener('mouseup', () => {
+                isGalloping = false;
+            });
+
+            gallopBtn.addEventListener('mouseleave', () => {
+                isGalloping = false;
+            });
+        }
+
+        function updateMovement() {
+            if (!myHorse || !gameStarted) return;
+
+            let moveX = 0;
+            let moveZ = 0;
+            
+            if (keys['KeyW'] || keys['ArrowUp']) moveZ -= 1;
+            if (keys['KeyS'] || keys['ArrowDown']) moveZ += 1;
+            if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
+            if (keys['KeyD'] || keys['ArrowRight']) moveX += 1;
+
+            if (moveX !== 0 || moveZ !== 0) {
+                const speedMultiplier = isGalloping && myHorseStats.stamina > 0 ? 2 : 1;
+                const baseSpeed = myHorseStats.speed / 1000;
+                const actualSpeed = baseSpeed * speedMultiplier;
+
+                myHorse.position.x += moveX * actualSpeed;
+                myHorse.position.z += moveZ * actualSpeed;
+
+                // Keep horse in bounds
+                myHorse.position.x = Math.max(-45, Math.min(45, myHorse.position.x));
+                myHorse.position.z = Math.max(-45, Math.min(45, myHorse.position.z));
+
+                // Update stamina
+                if (isGalloping && myHorseStats.stamina > 0) {
+                    myHorseStats.stamina = Math.max(0, myHorseStats.stamina - 0.5);
+                } else if (!isGalloping && myHorseStats.stamina < myHorseStats.maxStamina) {
+                    myHorseStats.stamina = Math.min(myHorseStats.maxStamina, myHorseStats.stamina + 0.2);
+                }
+
+                // Update UI
+                updateStatsUI();
+
+                // Update multiplayer position
+                room.updatePresence({
+                    x: myHorse.position.x,
+                    z: myHorse.position.z,
+                    stamina: myHorseStats.stamina
+                });
+
+                // Update camera to follow horse
+                camera.position.x = myHorse.position.x;
+                camera.position.z = myHorse.position.z + 15;
+                controls.target.set(myHorse.position.x, 0, myHorse.position.z);
+            }
+        }
+
+        function updateStatsUI() {
+            document.getElementById('speedValue').textContent = myHorseStats.speed;
+            document.getElementById('staminaValue').textContent = Math.floor(myHorseStats.stamina);
+            
+            document.getElementById('speedBar').style.width = `${(myHorseStats.speed / 75) * 100}%`;
+            document.getElementById('staminaBar').style.width = `${(myHorseStats.stamina / myHorseStats.maxStamina) * 100}%`;
+        }
+
+        // Game loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            updateMovement();
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Event listeners
+        generateBtn.addEventListener('click', generateHorse);
+        
+        startBtn.addEventListener('click', async () => {
+            if (!window.myHorseData) return;
+
+            horseCreator.style.display = 'none';
+            gameUI.style.display = 'block';
+            controlsDiv.style.display = 'block';
+            gameStarted = true;
+
+            // Create my horse sprite
+            myHorse = createHorseSprite(window.myHorseData.image);
+            myHorse.position.set(0, 2, 0);
+            scene.add(myHorse);
+
+            // Update multiplayer with horse data
+            room.updatePresence({
+                horseImage: window.myHorseData.image,
+                stats: window.myHorseData.stats,
+                x: 0,
+                z: 0,
+                stamina: myHorseStats.stamina
+            });
+
+            updateStatsUI();
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Initialize game
+        async function init() {
+            initScene();
+            await initMultiplayer();
+            setupControls();
+            animate();
+        }
+
+        init();
+    </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+
