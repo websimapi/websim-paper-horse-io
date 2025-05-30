@@ -209,6 +209,9 @@
         let gameStarted = false;
         let keys = {};
         let isGalloping = false;
+        let terrainChunks = new Map();
+        let chunkSize = 50;
+        let renderDistance = 3; // Number of chunks in each direction
 
         // UI elements
         const horseCreator = document.getElementById('horseCreator');
@@ -222,55 +225,22 @@
         const controlsDiv = document.getElementById('controls');
         const playersContainer = document.getElementById('playersContainer');
 
-        // Initialize Three.js scene
-        function initScene() {
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87CEEB);
-
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 15, 20);
-
-            renderer = new THREE.WebGLRenderer({ 
-                canvas: document.getElementById('gameCanvas'),
-                antialias: true 
+        function createHorseSprite(imageUrl) {
+            const textureLoader = new THREE.TextureLoader();
+            const texture = textureLoader.load(imageUrl);
+            texture.magFilter = THREE.NearestFilter;
+            texture.minFilter = THREE.LinearFilter;
+            
+            const spriteMaterial = new THREE.SpriteMaterial({ 
+                map: texture,
+                transparent: true,
+                alphaTest: 0.5
             });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-            // Create field
-            const fieldGeometry = new THREE.PlaneGeometry(100, 100);
-            const fieldMaterial = new THREE.MeshLambertMaterial({ color: 0x90EE90 });
-            const field = new THREE.Mesh(fieldGeometry, fieldMaterial);
-            field.rotation.x = -Math.PI / 2;
-            field.receiveShadow = true;
-            scene.add(field);
-
-            // Add some trees around the field
-            for (let i = 0; i < 20; i++) {
-                const treeGroup = createTree();
-                treeGroup.position.set(
-                    (Math.random() - 0.5) * 120,
-                    0,
-                    (Math.random() - 0.5) * 120
-                );
-                scene.add(treeGroup);
-            }
-
-            // Lighting
-            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-            scene.add(ambientLight);
-
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(50, 50, 50);
-            directionalLight.castShadow = true;
-            directionalLight.shadow.mapSize.width = 2048;
-            directionalLight.shadow.mapSize.height = 2048;
-            scene.add(directionalLight);
-
-            controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(6, 6, 1);
+            sprite.position.y = 3;
+            
+            return sprite;
         }
 
         function createTree() {
@@ -295,20 +265,105 @@
             return group;
         }
 
-        function createHorseSprite(imageUrl) {
-            const textureLoader = new THREE.TextureLoader();
-            const texture = textureLoader.load(imageUrl);
-            
-            const spriteMaterial = new THREE.SpriteMaterial({ 
-                map: texture,
-                transparent: true 
+        // Initialize Three.js scene
+        function initScene() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 8, 12);
+
+            renderer = new THREE.WebGLRenderer({ 
+                canvas: document.getElementById('gameCanvas'),
+                antialias: true 
             });
-            const sprite = new THREE.Sprite(spriteMaterial);
-            sprite.scale.set(4, 4, 1);
-            sprite.position.y = 2;
-            sprite.castShadow = true;
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            generateInitialTerrain();
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(50, 50, 50);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.enablePan = false;
+            controls.enableZoom = false;
+            controls.maxPolarAngle = Math.PI / 2.2;
+            controls.minDistance = 8;
+            controls.maxDistance = 20;
+        }
+
+        function generateInitialTerrain() {
+            for (let x = -renderDistance; x <= renderDistance; x++) {
+                for (let z = -renderDistance; z <= renderDistance; z++) {
+                    createTerrainChunk(x, z);
+                }
+            }
+        }
+
+        function createTerrainChunk(chunkX, chunkZ) {
+            const chunkKey = `${chunkX},${chunkZ}`;
+            if (terrainChunks.has(chunkKey)) return;
+
+            const chunkGroup = new THREE.Group();
             
-            return sprite;
+            // Create field chunk
+            const fieldGeometry = new THREE.PlaneGeometry(chunkSize, chunkSize);
+            const fieldMaterial = new THREE.MeshLambertMaterial({ color: 0x90EE90 });
+            const field = new THREE.Mesh(fieldGeometry, fieldMaterial);
+            field.rotation.x = -Math.PI / 2;
+            field.position.set(chunkX * chunkSize, 0, chunkZ * chunkSize);
+            field.receiveShadow = true;
+            chunkGroup.add(field);
+
+            // Add trees to chunk
+            const treeCount = Math.floor(Math.random() * 8) + 3;
+            for (let i = 0; i < treeCount; i++) {
+                const tree = createTree();
+                tree.position.set(
+                    chunkX * chunkSize + (Math.random() - 0.5) * chunkSize * 0.8,
+                    0,
+                    chunkZ * chunkSize + (Math.random() - 0.5) * chunkSize * 0.8
+                );
+                chunkGroup.add(tree);
+            }
+
+            scene.add(chunkGroup);
+            terrainChunks.set(chunkKey, chunkGroup);
+        }
+
+        function updateTerrain(playerX, playerZ) {
+            const playerChunkX = Math.floor(playerX / chunkSize);
+            const playerChunkZ = Math.floor(playerZ / chunkSize);
+
+            // Generate new chunks around player
+            for (let x = playerChunkX - renderDistance; x <= playerChunkX + renderDistance; x++) {
+                for (let z = playerChunkZ - renderDistance; z <= playerChunkZ + renderDistance; z++) {
+                    createTerrainChunk(x, z);
+                }
+            }
+
+            // Remove distant chunks
+            for (let [chunkKey, chunkGroup] of terrainChunks) {
+                const [chunkX, chunkZ] = chunkKey.split(',').map(Number);
+                const distance = Math.max(Math.abs(chunkX - playerChunkX), Math.abs(chunkZ - playerChunkZ));
+                
+                if (distance > renderDistance + 1) {
+                    scene.remove(chunkGroup);
+                    terrainChunks.delete(chunkKey);
+                }
+            }
         }
 
         // Multiplayer setup
@@ -377,45 +432,6 @@
             }
         }
 
-        // Horse generation
-        async function generateHorse() {
-            const prompt = horsePrompt.value.trim() || "beautiful horse running in a field";
-            
-            generateBtn.disabled = true;
-            loadingText.style.display = 'block';
-            
-            try {
-                const result = await websim.imageGen({
-                    prompt: `${prompt}, side view, game sprite, clean background, detailed, beautiful`,
-                    transparent: true,
-                    aspect_ratio: "1:1"
-                });
-                
-                horsePreview.src = result.url;
-                horsePreview.style.display = 'block';
-                startBtn.disabled = false;
-                
-                // Generate random stats
-                myHorseStats.speed = Math.floor(Math.random() * 50) + 25; // 25-75
-                myHorseStats.stamina = 100;
-                myHorseStats.maxStamina = Math.floor(Math.random() * 50) + 75; // 75-125
-                
-                // Store horse data
-                window.myHorseData = {
-                    image: result.url,
-                    stats: { ...myHorseStats }
-                };
-                
-            } catch (error) {
-                console.error('Error generating horse:', error);
-                alert('Failed to generate horse. Please try again.');
-            } finally {
-                generateBtn.disabled = false;
-                loadingText.style.display = 'none';
-            }
-        }
-
-        // Game controls
         function setupControls() {
             document.addEventListener('keydown', (e) => {
                 keys[e.code] = true;
@@ -464,10 +480,6 @@
                 myHorse.position.x += moveX * actualSpeed;
                 myHorse.position.z += moveZ * actualSpeed;
 
-                // Keep horse in bounds
-                myHorse.position.x = Math.max(-45, Math.min(45, myHorse.position.x));
-                myHorse.position.z = Math.max(-45, Math.min(45, myHorse.position.z));
-
                 // Update stamina
                 if (isGalloping && myHorseStats.stamina > 0) {
                     myHorseStats.stamina = Math.max(0, myHorseStats.stamina - 0.5);
@@ -485,10 +497,19 @@
                     stamina: myHorseStats.stamina
                 });
 
-                // Update camera to follow horse
-                camera.position.x = myHorse.position.x;
-                camera.position.z = myHorse.position.z + 15;
-                controls.target.set(myHorse.position.x, 0, myHorse.position.z);
+                // Update terrain chunks
+                updateTerrain(myHorse.position.x, myHorse.position.z);
+
+                // Update camera to follow horse smoothly
+                const targetCameraX = myHorse.position.x;
+                const targetCameraZ = myHorse.position.z + 10;
+                const targetCameraY = 8;
+                
+                camera.position.x += (targetCameraX - camera.position.x) * 0.1;
+                camera.position.z += (targetCameraZ - camera.position.z) * 0.1;
+                camera.position.y += (targetCameraY - camera.position.y) * 0.1;
+                
+                controls.target.set(myHorse.position.x, 2, myHorse.position.z);
             }
         }
 
@@ -498,6 +519,44 @@
             
             document.getElementById('speedBar').style.width = `${(myHorseStats.speed / 75) * 100}%`;
             document.getElementById('staminaBar').style.width = `${(myHorseStats.stamina / myHorseStats.maxStamina) * 100}%`;
+        }
+
+        // Horse generation
+        async function generateHorse() {
+            const prompt = horsePrompt.value.trim() || "beautiful horse running in a field";
+            
+            generateBtn.disabled = true;
+            loadingText.style.display = 'block';
+            
+            try {
+                const result = await websim.imageGen({
+                    prompt: `${prompt}, side view, game sprite, clean background, detailed, beautiful`,
+                    transparent: true,
+                    aspect_ratio: "1:1"
+                });
+                
+                horsePreview.src = result.url;
+                horsePreview.style.display = 'block';
+                startBtn.disabled = false;
+                
+                // Generate random stats
+                myHorseStats.speed = Math.floor(Math.random() * 50) + 25; // 25-75
+                myHorseStats.stamina = 100;
+                myHorseStats.maxStamina = Math.floor(Math.random() * 50) + 75; // 75-125
+                
+                // Store horse data
+                window.myHorseData = {
+                    image: result.url,
+                    stats: { ...myHorseStats }
+                };
+                
+            } catch (error) {
+                console.error('Error generating horse:', error);
+                alert('Failed to generate horse. Please try again.');
+            } finally {
+                generateBtn.disabled = false;
+                loadingText.style.display = 'none';
+            }
         }
 
         // Game loop
@@ -522,7 +581,7 @@
 
             // Create my horse sprite
             myHorse = createHorseSprite(window.myHorseData.image);
-            myHorse.position.set(0, 2, 0);
+            myHorse.position.set(0, 3, 0);
             scene.add(myHorse);
 
             // Update multiplayer with horse data
@@ -557,4 +616,3 @@
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
 </html>
-
