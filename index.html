@@ -1073,6 +1073,64 @@
             });
         }
 
+        function updatePlayersList() {
+            if (!room || !playersContainer) return;
+            
+            playersContainer.innerHTML = '';
+            
+            Object.values(room.peers).forEach(peer => {
+                const playerDiv = document.createElement('div');
+                playerDiv.className = 'player-item';
+                playerDiv.innerHTML = `
+                    <img class="player-avatar" src="${peer.avatarUrl}" alt="${peer.username}" />
+                    <span>${peer.username}</span>
+                `;
+                playersContainer.appendChild(playerDiv);
+            });
+        }
+
+        async function updateHorsePositions() {
+            if (!room) return;
+            
+            for (const [clientId, presence] of Object.entries(room.presence)) {
+                if (clientId === room.clientId) continue; // Skip own horse
+                
+                if (presence.horseImage && presence.x !== undefined && presence.z !== undefined) {
+                    let horse = horses.get(clientId);
+                    
+                    if (!horse) {
+                        // Create new horse sprite
+                        horse = await createHorseSprite(presence.horseImage);
+                        scene.add(horse);
+                        horses.set(clientId, horse);
+                        
+                        // Create label for this horse
+                        const peer = room.peers[clientId];
+                        if (peer) {
+                            createHorseLabel(clientId, peer.username, peer.avatarUrl);
+                        }
+                    }
+                    
+                    // Update position smoothly
+                    horse.position.x += (presence.x - horse.position.x) * 0.1;
+                    horse.position.z += (presence.z - horse.position.z) * 0.1;
+                }
+            }
+        }
+
+        function removeHorse(clientId) {
+            const horse = horses.get(clientId);
+            if (horse) {
+                scene.remove(horse);
+                horses.delete(clientId);
+            }
+            const label = horseLabels.get(clientId);
+            if (label) {
+                document.body.removeChild(label);
+                horseLabels.delete(clientId);
+            }
+        }
+
         // Horse generation
         async function generateHorse() {
             const userPrompt = horsePrompt.value.trim() || "beautiful running";
@@ -1138,9 +1196,9 @@
             if (!window.myHorseData) return;
 
             horseCreator.style.display = 'none';
-            gameUI.style.display = 'none';
-            controlsDiv.style.display = 'none';
-            document.getElementById('ui').style.display = 'none';
+            gameUI.style.display = 'block';
+            controlsDiv.style.display = 'block';
+            document.getElementById('ui').style.display = 'block';
             gameStarted = true;
 
             // Create my horse sprite and wait for it to load
