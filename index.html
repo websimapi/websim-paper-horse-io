@@ -552,7 +552,12 @@
                     aspect_ratio: "1:1"
                 });
                 
-                horsePreview.src = result.url;
+                // Upload the generated image to get a stable URL
+                const response = await fetch(result.url);
+                const blob = await response.blob();
+                const uploadedUrl = await websim.upload(blob);
+                
+                horsePreview.src = uploadedUrl;
                 horsePreview.style.display = 'block';
                 startBtn.disabled = false;
                 
@@ -561,9 +566,9 @@
                 myHorseStats.stamina = 100;
                 myHorseStats.maxStamina = Math.floor(Math.random() * 50) + 75; // 75-125
                 
-                // Store horse data
+                // Store horse data with uploaded URL
                 window.myHorseData = {
-                    image: result.url,
+                    image: uploadedUrl,
                     stats: { ...myHorseStats }
                 };
                 
