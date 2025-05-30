@@ -703,7 +703,7 @@
             
             try {
                 const result = await websim.imageGen({
-                    prompt: `${horseWeightedPrompt}, horse side view, horse game sprite, horse clean background, detailed horse, beautiful horse`,
+                    prompt: `${horseWeightedPrompt}, full body horse, horse game sprite, horse clean background, detailed horse, beautiful horse`,
                     transparent: true,
                     aspect_ratio: "1:1"
                 });
@@ -756,6 +756,7 @@
             horseCreator.style.display = 'none';
             gameUI.style.display = 'none';
             controlsDiv.style.display = 'none';
+            document.getElementById('ui').style.display = 'none';
             gameStarted = true;
 
             // Create my horse sprite and wait for it to load
