@@ -175,6 +175,43 @@
             height: 20px;
             border-radius: 50%;
         }
+
+        label {
+            display: block;
+            margin-top: 15px;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 14px;
+            background: white;
+            margin-bottom: 10px;
+        }
+
+        select:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+
+        #horsePrompt {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        #horsePrompt:focus {
+            border-color: #667eea;
+            outline: none;
+        }
     </style>
 </head>
 <body>
@@ -184,7 +221,38 @@
         <div id="ui">
             <div id="horseCreator">
                 <h3>Create Your Horse</h3>
-                <input type="text" id="horsePrompt" placeholder="Describe your horse (e.g., majestic white stallion)" />
+                <input type="text" id="horsePrompt" placeholder="Describe your horse (e.g., majestic stallion)" />
+                
+                <label for="horseType">Horse Type:</label>
+                <select id="horseType">
+                    <option value="stallion">Stallion</option>
+                    <option value="mare">Mare</option>
+                    <option value="colt">Colt</option>
+                    <option value="filly">Filly</option>
+                    <option value="pony">Pony</option>
+                    <option value="mustang">Mustang</option>
+                    <option value="thoroughbred">Thoroughbred</option>
+                    <option value="arabian">Arabian</option>
+                    <option value="clydesdale">Clydesdale</option>
+                    <option value="friesian">Friesian</option>
+                </select>
+
+                <label for="horseColor">Horse Color:</label>
+                <select id="horseColor">
+                    <option value="bay">Bay</option>
+                    <option value="black">Black</option>
+                    <option value="white">White</option>
+                    <option value="chestnut">Chestnut</option>
+                    <option value="gray">Gray</option>
+                    <option value="palomino">Palomino</option>
+                    <option value="buckskin">Buckskin</option>
+                    <option value="pinto">Pinto</option>
+                    <option value="appaloosa">Appaloosa</option>
+                    <option value="dun">Dun</option>
+                    <option value="roan">Roan</option>
+                    <option value="cream">Cream</option>
+                </select>
+
                 <img id="horsePreview" />
                 <button id="generateHorse">Generate Horse</button>
                 <button id="startGame" disabled>Start Racing!</button>
@@ -614,14 +682,19 @@
         // Horse generation
         async function generateHorse() {
             const userPrompt = horsePrompt.value.trim() || "beautiful running";
-            const horseWeightedPrompt = `horse ${userPrompt.split(' ').map(word => `horse ${word}`).join(' ')} horse`;
+            const horseType = document.getElementById('horseType').value;
+            const horseColor = document.getElementById('horseColor').value;
+            
+            // Create weighted prompt incorporating all selections
+            const combinedPrompt = `${horseColor} ${horseType} horse ${userPrompt}`;
+            const horseWeightedPrompt = combinedPrompt.split(' ').map(word => `horse ${word}`).join(' ') + ' horse';
             
             generateBtn.disabled = true;
             loadingText.style.display = 'block';
             
             try {
                 const result = await websim.imageGen({
-                    prompt: `${horseWeightedPrompt}, horse side view, horse game sprite, horse clean background, detailed horse, beautiful horse`,
+                    prompt: `${horseWeightedPrompt}, horse side view, horse game sprite, horse clean background, detailed horse, beautiful horse, ${horseColor} colored horse, ${horseType} horse breed`,
                     transparent: true,
                     aspect_ratio: "1:1"
                 });
