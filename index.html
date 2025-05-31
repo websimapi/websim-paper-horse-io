@@ -394,9 +394,9 @@
         
         <div id="ui">
             <div id="horseCreator">
-                <h3>🐎 Create Your Steed</h3>
+                <h3> Create Your Steed</h3>
                 
-                <button id="showCollection" style="margin-bottom: 15px;">🏛️ My Horse Collection</button>
+                <button id="showCollection" style="margin-bottom: 15px;"> My Horse Collection</button>
                 
                 <div id="horseCollection" class="horse-collection">
                     <h4>Select a Horse:</h4>
@@ -439,9 +439,9 @@
                     </div>
                     
                     <img id="horsePreview" />
-                    <button id="generateHorse">🎨 Generate My Horse</button>
-                    <button id="startGame" disabled>🌟 Enter the Field!</button>
-                    <div class="loading" id="loadingText" style="display: none;">Crafting your magnificent steed...✨</div>
+                    <button id="generateHorse"> Generate My Horse</button>
+                    <button id="startGame" disabled> Enter the Field!</button>
+                    <div class="loading" id="loadingText" style="display: none;">Crafting your magnificent steed... </div>
                 </div>
             </div>
             
@@ -1728,18 +1728,18 @@
             if (horseCollection.style.display === 'none' || !horseCollection.style.display) {
                 horseCollection.style.display = 'block';
                 horseGenerationForm.style.display = 'none';
-                showCollectionBtn.textContent = '🎨 Create New Horse';
+                showCollectionBtn.textContent = ' My Horse Collection';
             } else {
                 horseCollection.style.display = 'none';
                 horseGenerationForm.style.display = 'block';
-                showCollectionBtn.textContent = '🏛️ My Horse Collection';
+                showCollectionBtn.textContent = ' My Horse Collection';
             }
         });
 
         createNewHorseBtn.addEventListener('click', () => {
             horseCollection.style.display = 'none';
             horseGenerationForm.style.display = 'block';
-            showCollectionBtn.textContent = '🏛️ My Horse Collection';
+            showCollectionBtn.textContent = ' My Horse Collection';
         });
         
         // Handle window resize
