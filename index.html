@@ -442,7 +442,7 @@
         // Flying functionality
         let isFlying = false;
         let flyingHeight = 0;
-        let maxFlyingHeight = 20;
+        let maxFlyingHeight = 50; // Increased from 20 to fly above clouds
         let flySpeed = 0.1;
         
         // Double tap detection
@@ -461,6 +461,18 @@
             sugar: { color: 0xffffff, stamina: 30, speed: 2, rarity: 0.2, name: "Sugar Cube" },
             oats: { color: 0xdaa520, stamina: 25, speed: 0, maxStamina: 5, rarity: 0.3, name: "Golden Oats" },
             clover: { color: 0x00ff00, stamina: 10, speed: 0, maxStamina: 2, rarity: 0.5, name: "Lucky Clover" }
+        };
+
+        // Cloud types with different properties
+        const cloudTypes = {
+            normal: { color: 0xffffff, opacity: 0.8, name: "Normal" },
+            gray: { color: 0xb0b0b0, opacity: 0.7, name: "Storm Cloud" },
+            fluffy: { color: 0xf8f8ff, opacity: 0.9, name: "Fluffy Cloud" },
+            rainbow: { 
+                colors: [0xff0000, 0xff8000, 0xffff00, 0x00ff00, 0x0080ff, 0x8000ff], 
+                opacity: 0.6, 
+                name: "Rainbow Cloud" 
+            }
         };
 
         // UI elements
@@ -546,8 +558,9 @@
             return food;
         }
 
-        function createCloud() {
+        function createCloud(type = 'normal') {
             const group = new THREE.Group();
+            const cloudData = cloudTypes[type];
             
             // Create multiple spheres for a fluffy cloud appearance
             const cloudParts = [];
@@ -558,11 +571,24 @@
                     Math.random() * 2 + 1.5, // Random size 1.5-3.5
                     8, 6 // Lower detail for performance
                 );
-                const material = new THREE.MeshLambertMaterial({ 
-                    color: 0xffffff,
-                    transparent: true,
-                    opacity: 0.8
-                });
+                
+                let material;
+                if (type === 'rainbow') {
+                    // Rainbow clouds have multiple colored parts
+                    const colorIndex = i % cloudData.colors.length;
+                    material = new THREE.MeshLambertMaterial({ 
+                        color: cloudData.colors[colorIndex],
+                        transparent: true,
+                        opacity: cloudData.opacity
+                    });
+                } else {
+                    material = new THREE.MeshLambertMaterial({ 
+                        color: cloudData.color,
+                        transparent: true,
+                        opacity: cloudData.opacity
+                    });
+                }
+                
                 const sphere = new THREE.Mesh(geometry, material);
                 
                 // Random positioning within cloud
@@ -588,6 +614,7 @@
             // Store cloud data
             group.userData = {
                 isCloud: true,
+                type: type,
                 bounds: bounds,
                 parts: cloudParts,
                 animationOffset: Math.random() * Math.PI * 2,
@@ -635,16 +662,30 @@
         }
 
         function generateClouds() {
-            const numClouds = 15; // Number of clouds in the sky
+            const numClouds = 25; // Increased from 15
             
             for (let i = 0; i < numClouds; i++) {
-                const cloud = createCloud();
+                // Determine cloud type based on rarity
+                let cloudType = 'normal';
+                const rand = Math.random();
+                
+                if (rand < 0.02) { // 2% chance for rainbow clouds
+                    cloudType = 'rainbow';
+                } else if (rand < 0.15) { // 13% chance for gray clouds
+                    cloudType = 'gray';
+                } else if (rand < 0.35) { // 20% chance for fluffy clouds
+                    cloudType = 'fluffy';
+                }
+                
+                const cloud = createCloud(cloudType);
                 
                 // Position clouds high in the sky and spread out
+                // Vary heights more for different cloud layers
+                const baseHeight = cloudHeight + Math.random() * 20; // Between 25-45 units high
                 cloud.position.set(
-                    (Math.random() - 0.5) * 200, // Spread across 200 units
-                    cloudHeight + Math.random() * 10, // Between 25-35 units high
-                    (Math.random() - 0.5) * 200
+                    (Math.random() - 0.5) * 300, // Increased spread to 300 units
+                    baseHeight,
+                    (Math.random() - 0.5) * 300
                 );
                 
                 clouds.push(cloud);
@@ -665,61 +706,52 @@
                 userData.parts.forEach((part, index) => {
                     const offset = userData.animationOffset + index * 0.5;
                     part.position.y += Math.sin(time * 0.5 + offset) * 0.01;
+                    
+                    // Special animation for rainbow clouds
+                    if (userData.type === 'rainbow') {
+                        // Gentle color shifting effect
+                        part.material.opacity = cloudTypes.rainbow.opacity + Math.sin(time * 2 + offset) * 0.1;
+                    }
                 });
                 
                 // Wrap clouds around the world (basic culling)
-                if (Math.abs(cloud.position.x) > 150 || Math.abs(cloud.position.z) > 150) {
-                    cloud.position.x = (Math.random() - 0.5) * 200;
-                    cloud.position.z = (Math.random() - 0.5) * 200;
-                }
-            });
-        }
-
-        function checkCloudCollision() {
-            if (!myHorse || !gameStarted) return;
-            
-            const horsePos = myHorse.position;
-            let standingOnCloud = false;
-            let newCurrentCloud = null;
-            
-            clouds.forEach(cloud => {
-                const bounds = cloud.userData.bounds;
-                const cloudPos = cloud.position;
-                
-                // Check if horse is within cloud bounds horizontally
-                const dx = Math.abs(horsePos.x - cloudPos.x);
-                const dz = Math.abs(horsePos.z - cloudPos.z);
-                
-                if (dx < 6 && dz < 6) { // Within cloud horizontal bounds
-                    const cloudTop = cloudPos.y + 1.5;
-                    const cloudBottom = cloudPos.y - 1.5;
+                if (Math.abs(cloud.position.x) > 200 || Math.abs(cloud.position.z) > 200) {
+                    cloud.position.x = (Math.random() - 0.5) * 300;
+                    cloud.position.z = (Math.random() - 0.5) * 300;
                     
-                    // Check if horse is at the right height to stand on cloud
-                    if (horsePos.y >= cloudTop - 0.5 && horsePos.y <= cloudTop + 2) {
-                        // Horse is at cloud level, check if coming from above or was already on cloud
-                        if (!isFlying || (onCloud && currentCloud === cloud)) {
-                            standingOnCloud = true;
-                            newCurrentCloud = cloud;
-                            myHorse.position.y = cloudTop; // Snap to cloud surface
+                    // Occasionally regenerate cloud type when wrapping
+                    if (Math.random() < 0.1) { // 10% chance to change type
+                        const rand = Math.random();
+                        let newType = 'normal';
+                        
+                        if (rand < 0.02) {
+                            newType = 'rainbow';
+                        } else if (rand < 0.15) {
+                            newType = 'gray';
+                        } else if (rand < 0.35) {
+                            newType = 'fluffy';
+                        }
+                        
+                        if (newType !== userData.type) {
+                            // Update cloud appearance
+                            const newCloudData = cloudTypes[newType];
+                            userData.parts.forEach((part, i) => {
+                                if (newType === 'rainbow') {
+                                    const colorIndex = i % newCloudData.colors.length;
+                                    part.material.color.setHex(newCloudData.colors[colorIndex]);
+                                    part.material.opacity = newCloudData.opacity;
+                                } else {
+                                    part.material.color.setHex(newCloudData.color);
+                                    part.material.opacity = newCloudData.opacity;
+                                }
+                            });
+                            userData.type = newType;
                         }
                     }
                 }
             });
-            
-            // Update cloud standing state
-            onCloud = standingOnCloud;
-            currentCloud = newCurrentCloud;
-            
-            // If not on cloud and not flying and not jumping, apply gravity
-            if (!onCloud && !isFlying && !isJumping) {
-                const groundLevel = 4; // Base ground level
-                if (myHorse.position.y > groundLevel) {
-                    myHorse.position.y = Math.max(groundLevel, myHorse.position.y - 0.2); // Fall down
-                }
-            }
         }
 
-        // Initialize Three.js scene
         function initScene() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87CEEB);
@@ -1648,6 +1680,50 @@
             }
         }
         
+        function checkCloudCollision() {
+            if (!myHorse || !gameStarted) return;
+            
+            const horsePos = myHorse.position;
+            let standingOnCloud = false;
+            let newCurrentCloud = null;
+            
+            clouds.forEach(cloud => {
+                const bounds = cloud.userData.bounds;
+                const cloudPos = cloud.position;
+                
+                // Check if horse is within cloud bounds horizontally
+                const dx = Math.abs(horsePos.x - cloudPos.x);
+                const dz = Math.abs(horsePos.z - cloudPos.z);
+                
+                if (dx < 6 && dz < 6) { // Within cloud horizontal bounds
+                    const cloudTop = cloudPos.y + 1.5;
+                    const cloudBottom = cloudPos.y - 1.5;
+                    
+                    // Check if horse is at the right height to stand on cloud
+                    if (horsePos.y >= cloudTop - 0.5 && horsePos.y <= cloudTop + 2) {
+                        // Horse is at cloud level, check if coming from above or was already on cloud
+                        if (!isFlying || (onCloud && currentCloud === cloud)) {
+                            standingOnCloud = true;
+                            newCurrentCloud = cloud;
+                            myHorse.position.y = cloudTop; // Snap to cloud surface
+                        }
+                    }
+                }
+            });
+            
+            // Update cloud standing state
+            onCloud = standingOnCloud;
+            currentCloud = newCurrentCloud;
+            
+            // If not on cloud and not flying and not jumping, apply gravity
+            if (!onCloud && !isFlying && !isJumping) {
+                const groundLevel = 4; // Base ground level
+                if (myHorse.position.y > groundLevel) {
+                    myHorse.position.y = Math.max(groundLevel, myHorse.position.y - 0.2); // Fall down
+                }
+            }
+        }
+
         init();
     </script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
