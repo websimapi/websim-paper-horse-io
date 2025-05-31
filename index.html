@@ -424,6 +424,7 @@
         let raycaster = new THREE.Raycaster(); // For click-to-move detection
         let mouse = new THREE.Vector2(); // Mouse coordinates
         let jumpSound = null; // Jump sound effect
+        let eatSound = null; // Eating sound effect
         
         // Cloud system
         let clouds = [];
@@ -444,6 +445,7 @@
         let flyingHeight = 0;
         let maxFlyingHeight = 50; // Increased from 20 to fly above clouds
         let flySpeed = 0.1;
+        let fastFlySpeed = 0.25; // Speed when holding shift
         
         // Double tap detection
         let lastTapTime = 0;
@@ -1173,8 +1175,19 @@
             mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
             
-            // Check if clicking on horse first
+            // Check if clicking on food first
             raycaster.setFromCamera(mouse, camera);
+            const allFoodObjects = Array.from(foodItems.values());
+            const foodIntersects = raycaster.intersectObjects(allFoodObjects);
+            
+            if (foodIntersects.length > 0) {
+                // Clicked on food - eat it!
+                const clickedFood = foodIntersects[0].object;
+                eatFoodByClick(clickedFood);
+                return;
+            }
+            
+            // Check if clicking on horse 
             const horseIntersects = raycaster.intersectObject(myHorse);
             
             if (horseIntersects.length > 0) {
@@ -1203,8 +1216,19 @@
             mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
             
-            // Check if touching horse first
+            // Check if touching food first
             raycaster.setFromCamera(mouse, camera);
+            const allFoodObjects = Array.from(foodItems.values());
+            const foodIntersects = raycaster.intersectObjects(allFoodObjects);
+            
+            if (foodIntersects.length > 0) {
+                // Touched food - eat it!
+                const touchedFood = foodIntersects[0].object;
+                eatFoodByClick(touchedFood);
+                return;
+            }
+            
+            // Check if touching horse
             const horseIntersects = raycaster.intersectObject(myHorse);
             
             if (horseIntersects.length > 0) {
@@ -1220,6 +1244,74 @@
             }
             
             setMoveTarget();
+        }
+
+        function eatFoodByClick(foodObject) {
+            // Find the position key for this food object
+            let posKey = null;
+            for (const [key, food] of foodItems.entries()) {
+                if (food === foodObject) {
+                    posKey = key;
+                    break;
+                }
+            }
+            
+            if (!posKey) return;
+            
+            const foodData = foodObject.userData;
+            
+            // Play eating sound
+            if (eatSound) {
+                eatSound.currentTime = 0;
+                eatSound.play().catch(e => console.log('Eat sound play failed:', e));
+            }
+            
+            // Eating animation - scale down the food
+            const originalScale = foodObject.scale.clone();
+            const shrinkDuration = 300; // ms
+            const startTime = Date.now();
+            
+            function animateEat() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / shrinkDuration, 1);
+                
+                // Scale down with ease-out
+                const scale = 1 - (progress * progress);
+                foodObject.scale.setScalar(scale);
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animateEat);
+                } else {
+                    // Animation finished - consume the food
+                    applyFoodEffects(foodData);
+                    consumeFood(posKey, foodData.type);
+                    showFoodConsumedIndicator(foodData.name, myHorse.position);
+                }
+            }
+            
+            animateEat();
+        }
+        
+        function applyFoodEffects(foodData) {
+            // Apply food effects
+            myHorseStats.stamina = Math.min(myHorseStats.maxStamina, 
+                myHorseStats.stamina + foodData.stamina);
+            
+            if (foodData.speed) {
+                myHorseStats.speed += foodData.speed;
+            }
+            
+            if (foodData.maxStamina) {
+                myHorseStats.maxStamina += foodData.maxStamina;
+                myHorseStats.stamina = Math.min(myHorseStats.maxStamina, myHorseStats.stamina);
+            }
+            
+            // Update UI and presence
+            updateStatsUI();
+            room.updatePresence({
+                stats: myHorseStats,
+                stamina: myHorseStats.stamina
+            });
         }
 
         function setMoveTarget() {
@@ -1451,6 +1543,11 @@
             jumpSound = new Audio('jump.mp3');
             jumpSound.volume = 0.3;
             
+            // Create eating sound effect
+            eatSound = new Audio();
+            eatSound.src = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmEaDTy35fRFU30qwqtpFUpEmWrLF34aGSfPzcyL4vNkqHepyZJ5JguM2vjBdCQGNF7j9cJ4KVZUQ9gvLbPfhjnSQ8Wgb+qH6Wfs3yd8+J9MiznQ3gy8H+qfwvP+aYjFjR5OWD9W1qqxpnJUQnctHcP3i2D0zPLvLJsrOVyqL+f9d+l+TJ8hGvG2JIwvwqbAm1lJQ3j8bEhcYVQ4qELN1z6+b68+7ZDlCRF5bUgUgV3T2m3JEU/pqI+cLH7j1mTfHU9xfvGh8B56N4sU6hQfIFnVmvgI+Y5tPzP0VfXIg9YUlGAYfSN2kF8+TGYWdcq6G4TdYV7Hgd3bIFkQpgjHZPY=';
+            eatSound.volume = 0.4;
+            
             animate();
         }
 
@@ -1582,31 +1679,14 @@
                 if (distance < eatDistance) {
                     const foodData = food.userData;
                     
-                    // Apply food effects
-                    myHorseStats.stamina = Math.min(myHorseStats.maxStamina, 
-                        myHorseStats.stamina + foodData.stamina);
-                    
-                    if (foodData.speed) {
-                        myHorseStats.speed += foodData.speed;
-                    }
-                    
-                    if (foodData.maxStamina) {
-                        myHorseStats.maxStamina += foodData.maxStamina;
-                        myHorseStats.stamina = Math.min(myHorseStats.maxStamina, myHorseStats.stamina);
-                    }
+                    // Apply food effects using the helper function
+                    applyFoodEffects(foodData);
                     
                     // Show visual feedback
                     showFoodConsumedIndicator(foodData.name, horsePos);
                     
                     // Consume the food
                     consumeFood(posKey, foodData.type);
-                    
-                    // Update UI and presence
-                    updateStatsUI();
-                    room.updatePresence({
-                        stats: myHorseStats,
-                        stamina: myHorseStats.stamina
-                    });
                 }
             });
         }
@@ -1664,11 +1744,24 @@
         
         function updateFlying() {
             if (isFlying) {
+                // Check if shift is held for faster flying
+                const isBoostFlying = keys['ShiftLeft'] || keys['ShiftRight'];
+                const currentFlySpeed = isBoostFlying ? fastFlySpeed : flySpeed;
+                
                 // Handle vertical movement with space bar
                 if (keys['Space']) {
-                    flyingHeight = Math.min(maxFlyingHeight, flyingHeight + flySpeed);
+                    flyingHeight = Math.min(maxFlyingHeight, flyingHeight + currentFlySpeed);
+                    
+                    // Consume stamina when boost flying
+                    if (isBoostFlying && myHorseStats.stamina > 0) {
+                        myHorseStats.stamina = Math.max(0, myHorseStats.stamina - 0.8);
+                        updateStatsUI();
+                        room.updatePresence({
+                            stamina: myHorseStats.stamina
+                        });
+                    }
                 } else {
-                    flyingHeight = Math.max(0, flyingHeight - flySpeed * 0.5); // Fall slower than rise
+                    flyingHeight = Math.max(0, flyingHeight - currentFlySpeed * 0.5); // Fall slower than rise
                 }
                 
                 myHorse.position.y = 4 + flyingHeight;
