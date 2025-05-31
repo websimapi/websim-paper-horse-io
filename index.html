@@ -425,6 +425,13 @@
         let mouse = new THREE.Vector2(); // Mouse coordinates
         let jumpSound = null; // Jump sound effect
         
+        // Cloud system
+        let clouds = [];
+        let cloudSpeed = 0.005; // How fast clouds move
+        let onCloud = false; // Whether player is standing on a cloud
+        let currentCloud = null; // Which cloud player is on
+        let cloudHeight = 25; // Base height for clouds
+        
         // Jump functionality
         let isJumping = false;
         let jumpHeight = 0;
@@ -539,6 +546,61 @@
             return food;
         }
 
+        function createCloud() {
+            const group = new THREE.Group();
+            
+            // Create multiple spheres for a fluffy cloud appearance
+            const cloudParts = [];
+            const numParts = Math.floor(Math.random() * 5) + 8; // 8-12 parts
+            
+            for (let i = 0; i < numParts; i++) {
+                const geometry = new THREE.SphereGeometry(
+                    Math.random() * 2 + 1.5, // Random size 1.5-3.5
+                    8, 6 // Lower detail for performance
+                );
+                const material = new THREE.MeshLambertMaterial({ 
+                    color: 0xffffff,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const sphere = new THREE.Mesh(geometry, material);
+                
+                // Random positioning within cloud
+                sphere.position.set(
+                    (Math.random() - 0.5) * 8,
+                    (Math.random() - 0.5) * 2,
+                    (Math.random() - 0.5) * 8
+                );
+                
+                cloudParts.push(sphere);
+                group.add(sphere);
+            }
+            
+            // Add collision bounds for the cloud
+            const boundsGeometry = new THREE.BoxGeometry(12, 3, 12);
+            const boundsMaterial = new THREE.MeshBasicMaterial({ 
+                visible: false // Invisible collision box
+            });
+            const bounds = new THREE.Mesh(boundsGeometry, boundsMaterial);
+            bounds.userData.isCloudBounds = true;
+            group.add(bounds);
+            
+            // Store cloud data
+            group.userData = {
+                isCloud: true,
+                bounds: bounds,
+                parts: cloudParts,
+                animationOffset: Math.random() * Math.PI * 2,
+                moveDirection: new THREE.Vector3(
+                    (Math.random() - 0.5) * 2,
+                    0,
+                    (Math.random() - 0.5) * 2
+                ).normalize()
+            };
+            
+            return group;
+        }
+
         function generateFoodInChunk(chunkX, chunkZ) {
             const foods = [];
             const foodCount = Math.floor(Math.random() * 5) + 2; // 2-6 food items per chunk
@@ -572,6 +634,91 @@
             return foods;
         }
 
+        function generateClouds() {
+            const numClouds = 15; // Number of clouds in the sky
+            
+            for (let i = 0; i < numClouds; i++) {
+                const cloud = createCloud();
+                
+                // Position clouds high in the sky and spread out
+                cloud.position.set(
+                    (Math.random() - 0.5) * 200, // Spread across 200 units
+                    cloudHeight + Math.random() * 10, // Between 25-35 units high
+                    (Math.random() - 0.5) * 200
+                );
+                
+                clouds.push(cloud);
+                scene.add(cloud);
+            }
+        }
+
+        function updateClouds() {
+            clouds.forEach(cloud => {
+                const time = Date.now() * 0.001; // Convert to seconds
+                const userData = cloud.userData;
+                
+                // Move clouds slowly across the sky
+                cloud.position.x += userData.moveDirection.x * cloudSpeed;
+                cloud.position.z += userData.moveDirection.z * cloudSpeed;
+                
+                // Animate cloud parts for a floating effect
+                userData.parts.forEach((part, index) => {
+                    const offset = userData.animationOffset + index * 0.5;
+                    part.position.y += Math.sin(time * 0.5 + offset) * 0.01;
+                });
+                
+                // Wrap clouds around the world (basic culling)
+                if (Math.abs(cloud.position.x) > 150 || Math.abs(cloud.position.z) > 150) {
+                    cloud.position.x = (Math.random() - 0.5) * 200;
+                    cloud.position.z = (Math.random() - 0.5) * 200;
+                }
+            });
+        }
+
+        function checkCloudCollision() {
+            if (!myHorse || !gameStarted) return;
+            
+            const horsePos = myHorse.position;
+            let standingOnCloud = false;
+            let newCurrentCloud = null;
+            
+            clouds.forEach(cloud => {
+                const bounds = cloud.userData.bounds;
+                const cloudPos = cloud.position;
+                
+                // Check if horse is within cloud bounds horizontally
+                const dx = Math.abs(horsePos.x - cloudPos.x);
+                const dz = Math.abs(horsePos.z - cloudPos.z);
+                
+                if (dx < 6 && dz < 6) { // Within cloud horizontal bounds
+                    const cloudTop = cloudPos.y + 1.5;
+                    const cloudBottom = cloudPos.y - 1.5;
+                    
+                    // Check if horse is at the right height to stand on cloud
+                    if (horsePos.y >= cloudTop - 0.5 && horsePos.y <= cloudTop + 2) {
+                        // Horse is at cloud level, check if coming from above or was already on cloud
+                        if (!isFlying || (onCloud && currentCloud === cloud)) {
+                            standingOnCloud = true;
+                            newCurrentCloud = cloud;
+                            myHorse.position.y = cloudTop; // Snap to cloud surface
+                        }
+                    }
+                }
+            });
+            
+            // Update cloud standing state
+            onCloud = standingOnCloud;
+            currentCloud = newCurrentCloud;
+            
+            // If not on cloud and not flying and not jumping, apply gravity
+            if (!onCloud && !isFlying && !isJumping) {
+                const groundLevel = 4; // Base ground level
+                if (myHorse.position.y > groundLevel) {
+                    myHorse.position.y = Math.max(groundLevel, myHorse.position.y - 0.2); // Fall down
+                }
+            }
+        }
+
         // Initialize Three.js scene
         function initScene() {
             scene = new THREE.Scene();
@@ -589,6 +736,7 @@
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
             generateInitialTerrain();
+            generateClouds();
 
             // Lighting
             const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
@@ -1213,6 +1361,7 @@
             requestAnimationFrame(animate);
             
             updateMovement();
+            updateClouds();
             updateHorseLabels();
             controls.update();
             renderer.render(scene, camera);
@@ -1375,6 +1524,9 @@
             
             controls.target.set(myHorse.position.x, isFlying ? myHorse.position.y : 2, myHorse.position.z);
             
+            // Check for cloud collision
+            checkCloudCollision();
+
             // Check for food collision
             checkFoodCollision();
         }
