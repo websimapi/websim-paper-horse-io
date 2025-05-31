@@ -419,7 +419,11 @@
         let chatDisabled = false;
         let foodItems = new Map(); // Store food objects by position key
         let consumedFoods = new Set(); // Track consumed foods
-        
+        let targetPosition = null; // Target position for click-to-move
+        let isMovingToTarget = false; // Whether we're currently moving to a target
+        let raycaster = new THREE.Raycaster(); // For click-to-move detection
+        let mouse = new THREE.Vector2(); // Mouse coordinates
+
         // Food types with different effects and rarities
         const foodTypes = {
             apple: { color: 0xff0000, stamina: 20, speed: 0, rarity: 0.7, name: "Apple" },
@@ -851,6 +855,52 @@
                     }
                 }, 100);
             });
+
+            // Click/tap to move functionality
+            renderer.domElement.addEventListener('click', onCanvasClick);
+            renderer.domElement.addEventListener('touchend', onCanvasTouch);
+        }
+
+        function onCanvasClick(event) {
+            if (!myHorse || !gameStarted) return;
+            
+            // Don't move if clicking on UI elements
+            if (event.target !== renderer.domElement) return;
+            
+            // Calculate mouse position in normalized device coordinates
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            setMoveTarget();
+        }
+
+        function onCanvasTouch(event) {
+            if (!myHorse || !gameStarted) return;
+            if (event.touches.length > 0 || event.changedTouches.length === 0) return;
+            
+            event.preventDefault();
+            
+            const touch = event.changedTouches[0];
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            setMoveTarget();
+        }
+
+        function setMoveTarget() {
+            // Update the picking ray with the camera and mouse position
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Create a plane at ground level to intersect with
+            const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+            const intersectPoint = new THREE.Vector3();
+            
+            if (raycaster.ray.intersectPlane(groundPlane, intersectPoint)) {
+                targetPosition = intersectPoint.clone();
+                isMovingToTarget = true;
+            }
         }
 
         function showChatInput() {
@@ -1071,10 +1121,38 @@
             let moveX = 0;
             let moveZ = 0;
             
-            if (keys['KeyW'] || keys['ArrowUp']) moveZ -= 1;
-            if (keys['KeyS'] || keys['ArrowDown']) moveZ += 1;
-            if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
-            if (keys['KeyD'] || keys['ArrowRight']) moveX += 1;
+            // Check for keyboard input first (takes priority over click-to-move)
+            const hasKeyboardInput = keys['KeyW'] || keys['ArrowUp'] || keys['KeyS'] || keys['ArrowDown'] || 
+                                   keys['KeyA'] || keys['ArrowLeft'] || keys['KeyD'] || keys['ArrowRight'];
+            
+            if (hasKeyboardInput) {
+                // Cancel click-to-move when using keyboard
+                isMovingToTarget = false;
+                targetPosition = null;
+                
+                if (keys['KeyW'] || keys['ArrowUp']) moveZ -= 1;
+                if (keys['KeyS'] || keys['ArrowDown']) moveZ += 1;
+                if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
+                if (keys['KeyD'] || keys['ArrowRight']) moveX += 1;
+            } else if (isMovingToTarget && targetPosition) {
+                // Move towards click/tap target
+                const direction = new THREE.Vector3();
+                direction.subVectors(targetPosition, myHorse.position);
+                direction.y = 0; // Keep movement on ground plane
+                
+                const distance = direction.length();
+                
+                // Stop moving if we're close enough to the target
+                if (distance < 0.5) {
+                    isMovingToTarget = false;
+                    targetPosition = null;
+                } else {
+                    // Normalize direction and use for movement
+                    direction.normalize();
+                    moveX = direction.x;
+                    moveZ = direction.z;
+                }
+            }
 
             if (moveX !== 0 || moveZ !== 0) {
                 const speedMultiplier = isGalloping && myHorseStats.stamina > 0 ? 2 : 1;
