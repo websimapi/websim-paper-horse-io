@@ -1674,301 +1674,10 @@
             
             updateHorseCollectionUI();
             savePlayerData();
+            startGame();
         }
 
-        function updateMovement() {
-            if (!myHorse || !gameStarted) return;
-
-            // Track exploration distance
-            if (lastPosition) {
-                const distance = myHorse.position.distanceTo(lastPosition);
-                explorationDistance += distance;
-                
-                // Level up from exploration every 500 units
-                const explorationLevels = Math.floor(explorationDistance / 500);
-                const previousExplorationLevels = Math.floor((explorationDistance - distance) / 500);
-                
-                if (explorationLevels > previousExplorationLevels) {
-                    const oldStats = { ...myHorseStats };
-                    myHorseStats.speed += 1;
-                    checkForLevelUp(oldStats, myHorseStats);
-                    savePlayerData();
-                }
-            }
-            lastPosition = myHorse.position.clone();
-
-            // Update jump animation
-            updateJump();
-            
-            // Update flying
-            updateFlying();
-
-            let moveX = 0;
-            let moveZ = 0;
-            
-            // Check for keyboard input first (takes priority over click-to-move)
-            const hasKeyboardInput = keys['KeyW'] || keys['ArrowUp'] || keys['KeyS'] || keys['ArrowDown'] || 
-                                   keys['KeyA'] || keys['ArrowLeft'] || keys['KeyD'] || keys['ArrowRight'];
-            
-            if (hasKeyboardInput) {
-                // Cancel click-to-move when using keyboard
-                isMovingToTarget = false;
-                targetPosition = null;
-                
-                if (keys['KeyW'] || keys['ArrowUp']) moveZ -= 1;
-                if (keys['KeyS'] || keys['ArrowDown']) moveZ += 1;
-                if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
-                if (keys['KeyD'] || keys['ArrowRight']) moveX += 1;
-            } else if (isMovingToTarget && targetPosition) {
-                // Move towards click/tap target
-                const direction = new THREE.Vector3();
-                direction.subVectors(targetPosition, myHorse.position);
-                direction.y = 0; // Keep movement on ground plane
-                
-                const distance = direction.length();
-                
-                // Stop moving if we're close enough to the target
-                if (distance < 0.5) {
-                    isMovingToTarget = false;
-                    targetPosition = null;
-                } else {
-                    // Normalize direction and use for movement
-                    direction.normalize();
-                    moveX = direction.x;
-                    moveZ = direction.z;
-                }
-            }
-
-            if (moveX !== 0 || moveZ !== 0) {
-                const speedMultiplier = isGalloping && myHorseStats.stamina > 0 && !isFlying ? 2 : 1;
-                const baseSpeed = myHorseStats.speed / 1000;
-                const actualSpeed = baseSpeed * speedMultiplier;
-
-                myHorse.position.x += moveX * actualSpeed;
-                myHorse.position.z += moveZ * actualSpeed;
-
-                // Update stamina (only when galloping on ground)
-                if (isGalloping && myHorseStats.stamina > 0 && !isFlying) {
-                    myHorseStats.stamina = Math.max(0, myHorseStats.stamina - 0.5);
-                } else if (!isGalloping && myHorseStats.stamina < myHorseStats.maxStamina) {
-                    myHorseStats.stamina = Math.min(myHorseStats.maxStamina, myHorseStats.stamina + 0.2);
-                }
-
-                // Update UI
-                updateStatsUI();
-
-                // Update multiplayer position
-                const presenceUpdate = {
-                    x: myHorse.position.x,
-                    z: myHorse.position.z,
-                    stamina: myHorseStats.stamina
-                };
-                
-                if (isFlying) {
-                    presenceUpdate.flyingHeight = flyingHeight;
-                }
-                
-                room.updatePresence(presenceUpdate);
-                
-                // Update terrain chunks
-                updateTerrain(myHorse.position.x, myHorse.position.z);
-
-                // Update camera to follow horse smoothly
-                const targetCameraX = myHorse.position.x;
-                const targetCameraZ = myHorse.position.z + 6;
-                const targetCameraY = isFlying ? myHorse.position.y + 2 : 6;
-                
-                camera.position.x += (targetCameraX - camera.position.x) * 0.1;
-                camera.position.z += (targetCameraZ - camera.position.z) * 0.1;
-                camera.position.y += (targetCameraY - camera.position.y) * 0.1;
-                
-                controls.target.set(myHorse.position.x, isFlying ? myHorse.position.y : 2, myHorse.position.z);
-            }
-
-            // Always update camera to follow horse (moved outside movement condition)
-            const targetCameraX = myHorse.position.x;
-            const targetCameraZ = myHorse.position.z + 6;
-            const targetCameraY = isFlying ? myHorse.position.y + 2 : 6;
-            
-            camera.position.x += (targetCameraX - camera.position.x) * 0.1;
-            camera.position.z += (targetCameraZ - camera.position.z) * 0.1;
-            camera.position.y += (targetCameraY - camera.position.y) * 0.1;
-            
-            controls.target.set(myHorse.position.x, isFlying ? myHorse.position.y : 2, myHorse.position.z);
-            
-            // Check for cloud collision
-            checkCloudCollision();
-
-            // Check for food collision
-            checkFoodCollision();
-        }
-
-        function updateStatsUI() {
-            document.getElementById('speedValue').textContent = myHorseStats.speed;
-            document.getElementById('staminaValue').textContent = Math.floor(myHorseStats.stamina);
-            
-            document.getElementById('speedBar').style.width = `${(myHorseStats.speed / 100) * 100}%`;
-            document.getElementById('staminaBar').style.width = `${(myHorseStats.stamina / myHorseStats.maxStamina) * 100}%`;
-        }
-
-        function checkFoodCollision() {
-            if (!myHorse || !gameStarted) return;
-            
-            const horsePos = myHorse.position;
-            let standingOnCloud = false;
-            let newCurrentCloud = null;
-            
-            clouds.forEach(cloud => {
-                const bounds = cloud.userData.bounds;
-                const cloudPos = cloud.position;
-                
-                // Check if horse is within cloud bounds horizontally
-                const dx = Math.abs(horsePos.x - cloudPos.x);
-                const dz = Math.abs(horsePos.z - cloudPos.z);
-                
-                if (dx < 6 && dz < 6) { // Within cloud horizontal bounds
-                    const cloudTop = cloudPos.y + 1.5;
-                    const cloudBottom = cloudPos.y - 1.5;
-                    
-                    // Check if horse is at the right height to stand on cloud
-                    if (horsePos.y >= cloudTop - 0.5 && horsePos.y <= cloudTop + 2) {
-                        // Horse is at cloud level, check if coming from above or was already on cloud
-                        if (!isFlying || (onCloud && currentCloud === cloud)) {
-                            standingOnCloud = true;
-                            newCurrentCloud = cloud;
-                            myHorse.position.y = cloudTop; // Snap to cloud surface
-                        }
-                    }
-                }
-            });
-            
-            // Update cloud standing state
-            onCloud = standingOnCloud;
-            currentCloud = newCurrentCloud;
-            
-            // If not on cloud and not flying and not jumping, apply gravity
-            if (!onCloud && !isFlying && !isJumping) {
-                const groundLevel = 4; // Base ground level
-                if (myHorse.position.y > groundLevel) {
-                    myHorse.position.y = Math.max(groundLevel, myHorse.position.y - 0.2); // Fall down
-                }
-            }
-        }
-
-        function updateJump() {
-            if (isJumping && !isFlying) {
-                const elapsed = Date.now() - jumpStartTime;
-                const progress = Math.min(elapsed / jumpDuration, 1);
-                
-                // Use sine wave for smooth jump arc
-                jumpHeight = Math.sin(progress * Math.PI) * maxJumpHeight;
-                myHorse.position.y = 4 + jumpHeight; // 4 is base height
-                
-                if (progress >= 1) {
-                    // Jump finished
-                    isJumping = false;
-                    jumpHeight = 0;
-                    myHorse.position.y = 4;
-                    
-                    // Update multiplayer presence
-                    room.updatePresence({
-                        isJumping: false,
-                        jumpStartTime: null
-                    });
-                }
-            }
-        }
-        
-        function updateFlying() {
-            if (isFlying) {
-                // Check if shift is held for faster flying
-                const isBoostFlying = keys['ShiftLeft'] || keys['ShiftRight'];
-                const currentFlySpeed = isBoostFlying ? fastFlySpeed : flySpeed;
-                
-                // Handle vertical movement with space bar
-                if (keys['Space']) {
-                    flyingHeight = Math.min(maxFlyingHeight, flyingHeight + currentFlySpeed);
-                    
-                    // Consume stamina when boost flying
-                    if (isBoostFlying && myHorseStats.stamina > 0) {
-                        myHorseStats.stamina = Math.max(0, myHorseStats.stamina - 0.8);
-                        updateStatsUI();
-                        room.updatePresence({
-                            stamina: myHorseStats.stamina
-                        });
-                    }
-                } else {
-                    flyingHeight = Math.max(0, flyingHeight - currentFlySpeed * 0.5); // Fall slower than rise
-                }
-                
-                myHorse.position.y = 4 + flyingHeight;
-                
-                // Check if landed
-                if (flyingHeight <= 0 && myHorse.position.y <= 4) {
-                    stopFlying();
-                }
-            }
-        }
-        
-        function checkCloudCollision() {
-            if (!myHorse || !gameStarted) return;
-            
-            const horsePos = myHorse.position;
-            let standingOnCloud = false;
-            let newCurrentCloud = null;
-            
-            clouds.forEach(cloud => {
-                const bounds = cloud.userData.bounds;
-                const cloudPos = cloud.position;
-                
-                // Check if horse is within cloud bounds horizontally
-                const dx = Math.abs(horsePos.x - cloudPos.x);
-                const dz = Math.abs(horsePos.z - cloudPos.z);
-                
-                if (dx < 6 && dz < 6) { // Within cloud horizontal bounds
-                    const cloudTop = cloudPos.y + 1.5;
-                    const cloudBottom = cloudPos.y - 1.5;
-                    
-                    // Check if horse is at the right height to stand on cloud
-                    if (horsePos.y >= cloudTop - 0.5 && horsePos.y <= cloudTop + 2) {
-                        // Horse is at cloud level, check if coming from above or was already on cloud
-                        if (!isFlying || (onCloud && currentCloud === cloud)) {
-                            standingOnCloud = true;
-                            newCurrentCloud = cloud;
-                            myHorse.position.y = cloudTop; // Snap to cloud surface
-                        }
-                    }
-                }
-            });
-            
-            // Update cloud standing state
-            onCloud = standingOnCloud;
-            currentCloud = newCurrentCloud;
-            
-            // If not on cloud and not flying and not jumping, apply gravity
-            if (!onCloud && !isFlying && !isJumping) {
-                const groundLevel = 4; // Base ground level
-                if (myHorse.position.y > groundLevel) {
-                    myHorse.position.y = Math.max(groundLevel, myHorse.position.y - 0.2); // Fall down
-                }
-            }
-        }
-
-        // Game loop
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            updateMovement();
-            updateClouds();
-            updateHorseLabels();
-            controls.update();
-            renderer.render(scene, camera);
-        }
-
-        // Event listeners
-        generateBtn.addEventListener('click', generateHorse);
-        
-        startBtn.addEventListener('click', async () => {
+        async function startGame() {
             if (!window.myHorseData) return;
 
             horseCreator.style.display = 'none';
@@ -1998,8 +1707,23 @@
             if (currentUser) {
                 createHorseLabel(room.clientId, currentUser.username, currentUser.avatarUrl);
             }
-        });
+        }
 
+        // Game loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            updateMovement();
+            updateClouds();
+            updateHorseLabels();
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Event listeners
+        generateBtn.addEventListener('click', generateHorse);
+        startBtn.addEventListener('click', startGame);
+        
         showCollectionBtn.addEventListener('click', () => {
             if (horseCollection.style.display === 'none' || !horseCollection.style.display) {
                 horseCollection.style.display = 'block';
