@@ -311,6 +311,31 @@
                 transform: translateY(-50px);
             }
         }
+
+        .firework {
+            position: absolute;
+            pointer-events: none;
+            z-index: 2000;
+        }
+
+        .firework-particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            animation: fireworkExplosion 1.5s ease-out forwards;
+        }
+
+        @keyframes fireworkExplosion {
+            0% {
+                opacity: 1;
+                transform: scale(1) translate(0, 0);
+            }
+            100% {
+                opacity: 0;
+                transform: scale(0.5) translate(var(--dx), var(--dy));
+            }
+        }
     </style>
 </head>
 <body>
@@ -425,6 +450,7 @@
         let mouse = new THREE.Vector2(); // Mouse coordinates
         let jumpSound = null; // Jump sound effect
         let eatSound = null; // Eating sound effect
+        let levelUpSound = null; // Level up sound effect
         
         // Cloud system
         let clouds = [];
@@ -1247,6 +1273,15 @@
         }
 
         function eatFoodByClick(foodObject) {
+            // Check if horse is close enough to eat the food
+            const distance = myHorse.position.distanceTo(foodObject.position);
+            const eatDistance = 2; // Same distance as collision detection
+            
+            if (distance > eatDistance) {
+                // Horse is too far away - do nothing
+                return;
+            }
+            
             // Find the position key for this food object
             let posKey = null;
             for (const [key, food] of foodItems.entries()) {
@@ -1293,6 +1328,10 @@
         }
         
         function applyFoodEffects(foodData) {
+            // Store previous stats to detect increases
+            const prevSpeed = myHorseStats.speed;
+            const prevMaxStamina = myHorseStats.maxStamina;
+            
             // Apply food effects
             myHorseStats.stamina = Math.min(myHorseStats.maxStamina, 
                 myHorseStats.stamina + foodData.stamina);
@@ -1304,6 +1343,21 @@
             if (foodData.maxStamina) {
                 myHorseStats.maxStamina += foodData.maxStamina;
                 myHorseStats.stamina = Math.min(myHorseStats.maxStamina, myHorseStats.stamina);
+            }
+            
+            // Check if any stats increased (level up)
+            const speedIncreased = myHorseStats.speed > prevSpeed;
+            const maxStaminaIncreased = myHorseStats.maxStamina > prevMaxStamina;
+            
+            if (speedIncreased || maxStaminaIncreased) {
+                // Play level up sound
+                if (levelUpSound) {
+                    levelUpSound.currentTime = 0;
+                    levelUpSound.play().catch(e => console.log('Level up sound play failed:', e));
+                }
+                
+                // Show fireworks
+                showFireworks(myHorse.position);
             }
             
             // Update UI and presence
@@ -1542,6 +1596,10 @@
             // Load jump sound
             jumpSound = new Audio('jump.mp3');
             jumpSound.volume = 0.3;
+            
+            // Load level up sound
+            levelUpSound = new Audio('levelup.mp3');
+            levelUpSound.volume = 0.5;
             
             // Create eating sound effect
             eatSound = new Audio();
@@ -1817,6 +1875,53 @@
             }
         }
 
+        function showFireworks(position) {
+            // Convert 3D position to screen coordinates
+            const vector = new THREE.Vector3();
+            vector.copy(position);
+            vector.y += 3; // Above horse
+            vector.project(camera);
+            
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+            
+            // Create firework container
+            const firework = document.createElement('div');
+            firework.className = 'firework';
+            firework.style.left = x + 'px';
+            firework.style.top = y + 'px';
+            
+            // Create multiple colored particles
+            const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffffff', '#ffa500'];
+            const particleCount = 20;
+            
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'firework-particle';
+                particle.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                
+                // Random explosion direction
+                const angle = (i / particleCount) * Math.PI * 2;
+                const distance = 50 + Math.random() * 100;
+                const dx = Math.cos(angle) * distance;
+                const dy = Math.sin(angle) * distance;
+                
+                particle.style.setProperty('--dx', dx + 'px');
+                particle.style.setProperty('--dy', dy + 'px');
+                
+                firework.appendChild(particle);
+            }
+            
+            document.body.appendChild(firework);
+            
+            // Remove firework after animation
+            setTimeout(() => {
+                if (firework.parentNode) {
+                    document.body.removeChild(firework);
+                }
+            }, 1500);
+        }
+        
         init();
     </script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
