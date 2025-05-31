@@ -1774,6 +1774,321 @@
         }
 
         init();
+
+        function setMoveTarget() {
+            // Cast ray to find where player clicked
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Create a plane at ground level to intersect with
+            const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+            const intersectPoint = new THREE.Vector3();
+            
+            if (raycaster.ray.intersectPlane(groundPlane, intersectPoint)) {
+                targetPosition = intersectPoint.clone();
+                isMovingToTarget = true;
+            }
+        }
+
+        function updateMovement() {
+            if (!myHorse || !gameStarted) return;
+
+            const moveSpeed = (myHorseStats.speed / 100) * 0.3;
+            let actualMoveSpeed = moveSpeed;
+            
+            // Handle flying controls
+            if (isFlying) {
+                const flySpeedMultiplier = keys['ShiftLeft'] || keys['ShiftRight'] ? fastFlySpeed : flySpeed;
+                
+                // Use stamina for fast flying
+                if ((keys['ShiftLeft'] || keys['ShiftRight']) && myHorseStats.stamina > 0) {
+                    myHorseStats.stamina = Math.max(0, myHorseStats.stamina - 0.3);
+                    actualMoveSpeed = moveSpeed * 2;
+                }
+                
+                // Vertical movement
+                if (keys['Space']) {
+                    flyingHeight = Math.min(maxFlyingHeight, flyingHeight + flySpeedMultiplier);
+                } else if (keys['ControlLeft'] || keys['ControlRight'] || keys['KeyC']) {
+                    flyingHeight = Math.max(0, flyingHeight - flySpeedMultiplier);
+                }
+                
+                myHorse.position.y = 4 + flyingHeight;
+                
+                // Land if we reach the ground
+                if (flyingHeight <= 0) {
+                    stopFlying();
+                }
+            }
+            
+            // Handle jumping
+            if (isJumping && !isFlying) {
+                const elapsed = Date.now() - jumpStartTime;
+                const progress = Math.min(elapsed / jumpDuration, 1);
+                jumpHeight = Math.sin(progress * Math.PI) * maxJumpHeight;
+                myHorse.position.y = 4 + jumpHeight;
+                
+                if (progress >= 1) {
+                    isJumping = false;
+                    jumpHeight = 0;
+                    myHorse.position.y = 4;
+                    
+                    // Update multiplayer presence
+                    room.updatePresence({
+                        isJumping: false,
+                        jumpStartTime: null
+                    });
+                }
+            }
+            
+            // Handle movement
+            let moveX = 0;
+            let moveZ = 0;
+            
+            // Keyboard movement
+            if (keys['KeyW'] || keys['ArrowUp']) moveZ -= 1;
+            if (keys['KeyS'] || keys['ArrowDown']) moveZ += 1;
+            if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
+            if (keys['KeyD'] || keys['ArrowRight']) moveX += 1;
+            
+            // Click-to-move
+            if (isMovingToTarget && targetPosition && !isFlying) {
+                const distanceToTarget = myHorse.position.distanceTo(targetPosition);
+                if (distanceToTarget > 0.5) {
+                    const direction = new THREE.Vector3()
+                        .subVectors(targetPosition, myHorse.position)
+                        .normalize();
+                    moveX = direction.x;
+                    moveZ = direction.z;
+                } else {
+                    isMovingToTarget = false;
+                    targetPosition = null;
+                }
+            }
+            
+            // Apply movement
+            if (moveX !== 0 || moveZ !== 0) {
+                // Normalize diagonal movement
+                const magnitude = Math.sqrt(moveX * moveX + moveZ * moveZ);
+                if (magnitude > 1) {
+                    moveX /= magnitude;
+                    moveZ /= magnitude;
+                }
+                
+                // Apply galloping speed boost and stamina cost
+                if (isGalloping && !isFlying && myHorseStats.stamina > 0) {
+                    actualMoveSpeed *= 2;
+                    myHorseStats.stamina = Math.max(0, myHorseStats.stamina - 0.5);
+                } else if (!isFlying) {
+                    // Regenerate stamina when not galloping
+                    myHorseStats.stamina = Math.min(myHorseStats.maxStamina, myHorseStats.stamina + 0.2);
+                }
+                
+                // Track exploration distance
+                if (lastPosition) {
+                    const distance = myHorse.position.distanceTo(lastPosition);
+                    explorationDistance += distance;
+                    
+                    // Give exploration XP every 100 units
+                    if (Math.floor(explorationDistance / 100) > Math.floor((explorationDistance - distance) / 100)) {
+                        myHorseStats.speed += 1;
+                        showLevelUpIndicator("Exploration +1 Speed!", myHorse.position);
+                        playLevelUpEffect("Exploration +1 Speed!");
+                    }
+                }
+                lastPosition = myHorse.position.clone();
+                
+                // Apply movement
+                myHorse.position.x += moveX * actualMoveSpeed;
+                myHorse.position.z += moveZ * actualMoveSpeed;
+                
+                // Check for cloud collisions
+                checkCloudCollisions();
+                
+                // Update terrain around player
+                updateTerrain(myHorse.position.x, myHorse.position.z);
+                
+                // Check for food collisions
+                checkFoodCollisions();
+                
+                // Update camera to follow horse
+                const offset = new THREE.Vector3(8, 6, 8);
+                const targetPos = myHorse.position.clone().add(offset);
+                
+                // Adjust camera height based on horse height (flying/jumping)
+                targetPos.y = Math.max(6, myHorse.position.y + 2);
+                
+                camera.position.lerp(targetPos, 0.05);
+                controls.target.lerp(myHorse.position, 0.05);
+                
+                // Update multiplayer presence
+                room.updatePresence({
+                    x: myHorse.position.x,
+                    z: myHorse.position.z,
+                    isJumping: isJumping,
+                    jumpStartTime: isJumping ? jumpStartTime : null,
+                    isFlying: isFlying,
+                    flyingHeight: isFlying ? flyingHeight : 0,
+                    stamina: myHorseStats.stamina
+                });
+            }
+            
+            updateStatsUI();
+        }
+
+        function checkCloudCollisions() {
+            if (!myHorse || isFlying) return;
+            
+            onCloud = false;
+            currentCloud = null;
+            
+            // Check if horse is on any cloud
+            clouds.forEach(cloud => {
+                const bounds = cloud.userData.bounds;
+                const cloudPos = cloud.position;
+                
+                // Check if horse is within cloud bounds horizontally
+                const horizontalDistance = Math.sqrt(
+                    Math.pow(myHorse.position.x - cloudPos.x, 2) + 
+                    Math.pow(myHorse.position.z - cloudPos.z, 2)
+                );
+                
+                if (horizontalDistance < 6) { // Within cloud bounds
+                    const cloudTop = cloudPos.y + 1.5;
+                    const cloudBottom = cloudPos.y - 1.5;
+                    
+                    // If horse is above cloud and falling/jumping down
+                    if (myHorse.position.y >= cloudTop - 0.5 && myHorse.position.y <= cloudTop + 2) {
+                        onCloud = true;
+                        currentCloud = cloud;
+                        myHorse.position.y = cloudTop + 4; // Place horse on cloud surface
+                        
+                        // Stop falling/jumping when landing on cloud
+                        if (isJumping) {
+                            isJumping = false;
+                            jumpHeight = 0;
+                        }
+                    }
+                }
+            });
+        }
+
+        function checkFoodCollisions() {
+            if (!myHorse) return;
+            
+            // Check collision with food items
+            foodItems.forEach((food, posKey) => {
+                const distance = myHorse.position.distanceTo(food.position);
+                if (distance < 2) { // Collision distance
+                    const foodData = food.userData;
+                    
+                    // Play eating sound
+                    if (eatSound) {
+                        eatSound.currentTime = 0;
+                        eatSound.play().catch(e => console.log('Eat sound play failed:', e));
+                    }
+                    
+                    // Apply food effects
+                    applyFoodEffects(foodData);
+                    
+                    // Remove food and show indicator
+                    consumeFood(posKey, foodData.type);
+                    showFoodConsumedIndicator(foodData.name, myHorse.position);
+                }
+            });
+        }
+
+        function updateStatsUI() {
+            if (!gameStarted) return;
+            
+            document.getElementById('speedValue').textContent = Math.floor(myHorseStats.speed);
+            document.getElementById('speedBar').style.width = Math.min(100, myHorseStats.speed) + '%';
+            document.getElementById('staminaValue').textContent = Math.floor(myHorseStats.stamina);
+            document.getElementById('staminaBar').style.width = (myHorseStats.stamina / myHorseStats.maxStamina) * 100 + '%';
+        }
+
+        function showFoodConsumedIndicator(foodName, position) {
+            const indicator = document.createElement('div');
+            indicator.className = 'food-consumed-indicator';
+            indicator.textContent = `+${foodName}`;
+            
+            // Convert 3D position to screen coordinates
+            const vector = new THREE.Vector3();
+            vector.copy(position);
+            vector.y += 3;
+            vector.project(camera);
+            
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+            
+            indicator.style.left = x + 'px';
+            indicator.style.top = y + 'px';
+            
+            document.body.appendChild(indicator);
+            
+            // Remove after animation
+            setTimeout(() => {
+                if (indicator.parentNode) {
+                    document.body.removeChild(indicator);
+                }
+            }, 2000);
+        }
+
+        // Chat functions
+        function showChatInput() {
+            chatInput.style.display = 'block';
+            chatButton.style.display = 'none';
+            chatInput.focus();
+        }
+
+        function hideChatInput() {
+            chatInput.style.display = 'none';
+            chatButton.style.display = 'flex';
+            chatInput.value = '';
+        }
+
+        function toggleChatDisabled() {
+            chatDisabled = !chatDisabled;
+            chatButton.classList.toggle('disabled', chatDisabled);
+            chatButton.textContent = chatDisabled ? '🚫' : '💬';
+            
+            if (chatDisabled) {
+                hideChatInput();
+            }
+        }
+
+        async function sendChatMessage() {
+            const message = chatInput.value.trim();
+            if (!message || chatDisabled) return;
+            
+            hideChatInput();
+            
+            // Show message above horse
+            const label = horseLabels.get(room.clientId);
+            if (label) {
+                const chatDiv = label.querySelector('.horse-chat');
+                chatDiv.textContent = message;
+                chatDiv.style.display = 'block';
+                
+                // Clear any existing timeout
+                if (chatTimeouts.has(room.clientId)) {
+                    clearTimeout(chatTimeouts.get(room.clientId));
+                }
+                
+                // Hide message after 3 seconds
+                const timeout = setTimeout(() => {
+                    chatDiv.style.display = 'none';
+                    chatTimeouts.delete(room.clientId);
+                }, 3000);
+                
+                chatTimeouts.set(room.clientId, timeout);
+            }
+            
+            // Send to other players
+            room.updatePresence({
+                chatMessage: message,
+                chatTime: Date.now()
+            });
+        }
     </script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body>
