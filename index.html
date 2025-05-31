@@ -423,7 +423,19 @@
         let isMovingToTarget = false; // Whether we're currently moving to a target
         let raycaster = new THREE.Raycaster(); // For click-to-move detection
         let mouse = new THREE.Vector2(); // Mouse coordinates
-
+        
+        // Jump functionality
+        let isJumping = false;
+        let jumpHeight = 0;
+        let jumpStartTime = 0;
+        let jumpDuration = 800; // Jump duration in ms
+        let maxJumpHeight = 3;
+        
+        // Double tap detection
+        let lastTapTime = 0;
+        let lastSpaceTime = 0;
+        let doubleTapDelay = 300; // Max time between taps for double tap
+        
         // Food types with different effects and rarities
         const foodTypes = {
             apple: { color: 0xff0000, stamina: 20, speed: 0, rarity: 0.7, name: "Apple" },
@@ -747,6 +759,16 @@
                 horse.position.x = presence.x;
                 horse.position.z = presence.z;
             }
+            
+            // Update jump animation for other players
+            if (presence.isJumping && presence.jumpStartTime) {
+                const elapsed = Date.now() - presence.jumpStartTime;
+                const progress = Math.min(elapsed / jumpDuration, 1);
+                const jumpHeight = Math.sin(progress * Math.PI) * maxJumpHeight;
+                horse.position.y = 4 + jumpHeight;
+            } else {
+                horse.position.y = 4; // Reset to base height
+            }
         }
 
         function removeHorse(clientId) {
@@ -780,6 +802,15 @@
                 keys[e.code] = true;
                 if (e.code === 'Space') {
                     e.preventDefault();
+                    
+                    // Check for double tap space
+                    const currentTime = Date.now();
+                    if (currentTime - lastSpaceTime < doubleTapDelay) {
+                        // Double tap detected - jump!
+                        startJump();
+                    }
+                    lastSpaceTime = currentTime;
+                    
                     isGalloping = true;
                 }
             });
@@ -859,6 +890,33 @@
             // Click/tap to move functionality
             renderer.domElement.addEventListener('click', onCanvasClick);
             renderer.domElement.addEventListener('touchend', onCanvasTouch);
+            
+            // Double tap to jump on mobile
+            renderer.domElement.addEventListener('touchstart', onCanvasTouchStart);
+        }
+        
+        function onCanvasTouchStart(event) {
+            const currentTime = Date.now();
+            if (currentTime - lastTapTime < doubleTapDelay) {
+                // Double tap detected - jump!
+                startJump();
+                event.preventDefault();
+            }
+            lastTapTime = currentTime;
+        }
+        
+        function startJump() {
+            if (!myHorse || !gameStarted || isJumping) return;
+            
+            isJumping = true;
+            jumpStartTime = Date.now();
+            jumpHeight = 0;
+            
+            // Update multiplayer presence
+            room.updatePresence({
+                isJumping: true,
+                jumpStartTime: jumpStartTime
+            });
         }
 
         function onCanvasClick(event) {
@@ -1118,6 +1176,9 @@
         function updateMovement() {
             if (!myHorse || !gameStarted) return;
 
+            // Update jump animation
+            updateJump();
+
             let moveX = 0;
             let moveZ = 0;
             
@@ -1273,6 +1334,30 @@
             }, 2000);
         }
 
+        function updateJump() {
+            if (isJumping) {
+                const elapsed = Date.now() - jumpStartTime;
+                const progress = Math.min(elapsed / jumpDuration, 1);
+                
+                // Use sine wave for smooth jump arc
+                jumpHeight = Math.sin(progress * Math.PI) * maxJumpHeight;
+                myHorse.position.y = 4 + jumpHeight; // 4 is base height
+                
+                if (progress >= 1) {
+                    // Jump finished
+                    isJumping = false;
+                    jumpHeight = 0;
+                    myHorse.position.y = 4;
+                    
+                    // Update multiplayer presence
+                    room.updatePresence({
+                        isJumping: false,
+                        jumpStartTime: null
+                    });
+                }
+            }
+        }
+        
         init();
     </script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
