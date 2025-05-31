@@ -423,6 +423,7 @@
         let isMovingToTarget = false; // Whether we're currently moving to a target
         let raycaster = new THREE.Raycaster(); // For click-to-move detection
         let mouse = new THREE.Vector2(); // Mouse coordinates
+        let jumpSound = null; // Jump sound effect
         
         // Jump functionality
         let isJumping = false;
@@ -908,6 +909,12 @@
         function startJump() {
             if (!myHorse || !gameStarted || isJumping) return;
             
+            // Play jump sound
+            if (jumpSound) {
+                jumpSound.currentTime = 0;
+                jumpSound.play().catch(e => console.log('Sound play failed:', e));
+            }
+            
             isJumping = true;
             jumpStartTime = Date.now();
             jumpHeight = 0;
@@ -930,6 +937,16 @@
             mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
             
+            // Check if clicking on horse first
+            raycaster.setFromCamera(mouse, camera);
+            const horseIntersects = raycaster.intersectObject(myHorse);
+            
+            if (horseIntersects.length > 0) {
+                // Clicked on horse - jump!
+                startJump();
+                return;
+            }
+            
             setMoveTarget();
         }
 
@@ -943,6 +960,16 @@
             const rect = renderer.domElement.getBoundingClientRect();
             mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            // Check if touching horse first
+            raycaster.setFromCamera(mouse, camera);
+            const horseIntersects = raycaster.intersectObject(myHorse);
+            
+            if (horseIntersects.length > 0) {
+                // Touched horse - jump!
+                startJump();
+                return;
+            }
             
             setMoveTarget();
         }
@@ -1170,6 +1197,11 @@
             initScene();
             await initMultiplayer();
             setupControls();
+            
+            // Load jump sound
+            jumpSound = new Audio('jump.mp3');
+            jumpSound.volume = 0.3;
+            
             animate();
         }
 
