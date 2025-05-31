@@ -1075,6 +1075,40 @@
             }
         }
 
+        function createHorseLabel(clientId, username, avatarUrl) {
+            const label = document.createElement('div');
+            label.className = 'horse-label';
+            label.innerHTML = `
+                <div class="horse-chat"></div>
+                <div class="horse-name-container">
+                    <img src="${avatarUrl}" alt="${username}" />
+                    <span>${username}</span>
+                </div>
+            `;
+            
+            document.body.appendChild(label);
+            horseLabels.set(clientId, label);
+        }
+
+        function updateHorseLabels() {
+            horseLabels.forEach((label, clientId) => {
+                const horse = horses.get(clientId) || (clientId === room.clientId ? myHorse : null);
+                if (horse) {
+                    // Convert 3D position to screen coordinates
+                    const vector = new THREE.Vector3();
+                    vector.setFromMatrixPosition(horse.matrixWorld);
+                    vector.y += 6; // Position above horse
+                    vector.project(camera);
+                    
+                    const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+                    const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+                    
+                    label.style.left = x + 'px';
+                    label.style.top = y + 'px';
+                }
+            });
+        }
+
         function setupControls() {
             document.addEventListener('keydown', (e) => {
                 // If typing in chat, don't move horse
@@ -1781,50 +1815,44 @@
             if (!myHorse || !gameStarted) return;
             
             const horsePos = myHorse.position;
-            const eatDistance = 2; // How close horse needs to be to eat food
+            let standingOnCloud = false;
+            let newCurrentCloud = null;
             
-            foodItems.forEach((food, posKey) => {
-                const distance = horsePos.distanceTo(food.position);
-                if (distance < eatDistance) {
-                    const foodData = food.userData;
+            clouds.forEach(cloud => {
+                const bounds = cloud.userData.bounds;
+                const cloudPos = cloud.position;
+                
+                // Check if horse is within cloud bounds horizontally
+                const dx = Math.abs(horsePos.x - cloudPos.x);
+                const dz = Math.abs(horsePos.z - cloudPos.z);
+                
+                if (dx < 6 && dz < 6) { // Within cloud horizontal bounds
+                    const cloudTop = cloudPos.y + 1.5;
+                    const cloudBottom = cloudPos.y - 1.5;
                     
-                    // Apply food effects using the helper function
-                    applyFoodEffects(foodData);
-                    
-                    // Show visual feedback
-                    showFoodConsumedIndicator(foodData.name, horsePos);
-                    
-                    // Consume the food
-                    consumeFood(posKey, foodData.type);
+                    // Check if horse is at the right height to stand on cloud
+                    if (horsePos.y >= cloudTop - 0.5 && horsePos.y <= cloudTop + 2) {
+                        // Horse is at cloud level, check if coming from above or was already on cloud
+                        if (!isFlying || (onCloud && currentCloud === cloud)) {
+                            standingOnCloud = true;
+                            newCurrentCloud = cloud;
+                            myHorse.position.y = cloudTop; // Snap to cloud surface
+                        }
+                    }
                 }
             });
-        }
-
-        function showFoodConsumedIndicator(foodName, position) {
-            const indicator = document.createElement('div');
-            indicator.className = 'food-consumed-indicator';
-            indicator.textContent = `+${foodName}!`;
             
-            // Convert 3D position to screen coordinates
-            const vector = new THREE.Vector3();
-            vector.setFromMatrixPosition(myHorse.matrixWorld);
-            vector.y += 2;
-            vector.project(camera);
-
-            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-            const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+            // Update cloud standing state
+            onCloud = standingOnCloud;
+            currentCloud = newCurrentCloud;
             
-            indicator.style.left = x + 'px';
-            indicator.style.top = y + 'px';
-            
-            document.body.appendChild(indicator);
-            
-            // Remove after animation
-            setTimeout(() => {
-                if (indicator.parentNode) {
-                    document.body.removeChild(indicator);
+            // If not on cloud and not flying and not jumping, apply gravity
+            if (!onCloud && !isFlying && !isJumping) {
+                const groundLevel = 4; // Base ground level
+                if (myHorse.position.y > groundLevel) {
+                    myHorse.position.y = Math.max(groundLevel, myHorse.position.y - 0.2); // Fall down
                 }
-            }, 2000);
+            }
         }
 
         function updateJump() {
@@ -1923,76 +1951,6 @@
                 if (myHorse.position.y > groundLevel) {
                     myHorse.position.y = Math.max(groundLevel, myHorse.position.y - 0.2); // Fall down
                 }
-            }
-        }
-
-        // Horse generation
-        async function generateHorse() {
-            const userPrompt = horsePrompt.value.trim() || "beautiful running";
-            const horseColor = document.getElementById('horseColor').value;
-            const horseType = document.getElementById('horseType').value;
-            
-            const fullPrompt = `${horseColor} ${horseType} horse ${userPrompt}`;
-            const horseWeightedPrompt = `horse ${fullPrompt.split(' ').map(word => `horse ${word}`).join(' ')} horse`;
-            
-            generateBtn.disabled = true;
-            loadingText.style.display = 'block';
-            
-            try {
-                const result = await websim.imageGen({
-                    prompt: `${horseWeightedPrompt}, full body horse, horse game sprite, horse clean background, detailed horse, beautiful horse`,
-                    transparent: true,
-                    aspect_ratio: "1:1"
-                });
-                
-                // Upload the generated image to get a stable URL
-                const response = await fetch(result.url);
-                const blob = await response.blob();
-                const uploadedUrl = await websim.upload(blob);
-                
-                horsePreview.src = uploadedUrl;
-                horsePreview.style.display = 'block';
-                startBtn.disabled = false;
-                
-                // Generate random stats
-                myHorseStats.speed = Math.floor(Math.random() * 50) + 25; // 25-75
-                myHorseStats.stamina = 100;
-                myHorseStats.maxStamina = Math.floor(Math.random() * 50) + 75; // 75-125
-                
-                // Create new horse entry
-                const newHorse = {
-                    id: Date.now().toString(),
-                    name: `${horseColor} ${horseType}`,
-                    prompt: fullPrompt,
-                    image: uploadedUrl,
-                    stats: { ...myHorseStats },
-                    explorationDistance: 0,
-                    createdAt: Date.now()
-                };
-                
-                playerHorses.push(newHorse);
-                selectedHorseId = newHorse.id;
-                
-                // Save to database
-                if (room) {
-                    await room.collection('horse_collection').create(newHorse);
-                }
-                
-                // Store horse data with uploaded URL
-                window.myHorseData = {
-                    image: uploadedUrl,
-                    stats: { ...myHorseStats }
-                };
-                
-                savePlayerData();
-                updateHorseCollectionUI();
-                
-            } catch (error) {
-                console.error('Error generating horse:', error);
-                alert('Failed to generate horse. Please try again.');
-            } finally {
-                generateBtn.disabled = false;
-                loadingText.style.display = 'none';
             }
         }
 
