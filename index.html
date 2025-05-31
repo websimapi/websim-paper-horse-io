@@ -319,7 +319,7 @@
         
         <div id="ui">
             <div id="horseCreator">
-                <h3>🐎 Create Your Steed</h3>
+                <h3> Create Your Steed</h3>
                 
                 <div class="form-group">
                     <label for="horsePrompt">Describe your horse:</label>
@@ -355,9 +355,9 @@
                 </div>
                 
                 <img id="horsePreview" />
-                <button id="generateHorse">🎨 Generate My Horse</button>
-                <button id="startGame" disabled>🏁 Enter the Field!</button>
-                <div class="loading" id="loadingText" style="display: none;">Crafting your magnificent steed... 🎨</div>
+                <button id="generateHorse"> Generate My Horse</button>
+                <button id="startGame" disabled> Enter the Field!</button>
+                <div class="loading" id="loadingText" style="display: none;">Crafting your magnificent steed... </div>
             </div>
             
             <div id="gameUI">
@@ -385,7 +385,7 @@
         </div>
 
         <input type="text" id="chatInput" placeholder="Type to chat..." maxlength="100" />
-        <button id="chatButton">💬</button>
+        <button id="chatButton"></button>
     </div>
 
     <script type="importmap">
@@ -1361,7 +1361,7 @@
                 camera.position.z += (targetCameraZ - camera.position.z) * 0.1;
                 camera.position.y += (targetCameraY - camera.position.y) * 0.1;
                 
-                controls.target.set(myHorse.position.x, 2, myHorse.position.z);
+                controls.target.set(myHorse.position.x, isFlying ? myHorse.position.y : 2, myHorse.position.z);
             }
             
             // Check for food collision
