@@ -1355,13 +1355,14 @@
                 // Update camera to follow horse smoothly
                 const targetCameraX = myHorse.position.x;
                 const targetCameraZ = myHorse.position.z + 6;
-                const targetCameraY = 6;
+                const targetCameraY = isFlying ? myHorse.position.y + 2 : 6;
                 
                 camera.position.x += (targetCameraX - camera.position.x) * 0.1;
                 camera.position.z += (targetCameraZ - camera.position.z) * 0.1;
                 camera.position.y += (targetCameraY - camera.position.y) * 0.1;
                 
-                controls.target.set(myHorse.position.x, 2, myHorse.position.z);
+                const targetY = isFlying ? myHorse.position.y : 2;
+                controls.target.set(myHorse.position.x, targetY, myHorse.position.z);
             }
             
             // Check for food collision
