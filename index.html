@@ -290,45 +290,26 @@
             transform: translateX(-50%) scale(1.1);
         }
 
-        #notificationArea {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 2000;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
+        .food-consumed-indicator {
+            position: absolute;
+            color: #4CAF50;
+            font-weight: bold;
+            font-size: 18px;
+            pointer-events: none;
+            z-index: 1500;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            animation: foodEatenFloat 2s ease-out forwards;
         }
 
-        .notification {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-            font-size: 1em;
-            opacity: 0;
-            transform: translateY(-20px);
-            transition: opacity 0.5s ease, transform 0.5s ease;
-        }
-
-        .notification.show {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        #statsDisplay {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            background: rgba(255,255,255,0.9);
-            padding: 15px;
-            border-radius: 15px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2);
-            display: none;
+        @keyframes foodEatenFloat {
+            0% {
+                opacity: 1;
+                transform: translateY(0px);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
         }
     </style>
 </head>
@@ -379,7 +360,7 @@
                 <div class="loading" id="loadingText" style="display: none;">Crafting your magnificent steed... 🎨</div>
             </div>
             
-            <div id="gameUI"> 
+            <div id="gameUI">
                 <h3>Your Horse Stats</h3>
                 <div>Speed: <span id="speedValue">0</span></div>
                 <div class="stat-bar">
@@ -400,20 +381,11 @@
 
         <div id="controls" style="display: none;">
             <div>Use WASD or Arrow Keys to move your horse</div>
-            <div>Hold Gallop button or Spacebar to run faster (uses stamina)</div>
-        </div>
-        
-        <div id="statsDisplay" style="display: none;">
-            <h3>Your Horse</h3>
-            <div>Speed: <span id="currentSpeedDisplay">0</span></div>
-            <div class="stat-bar"><div class="stat-fill speed-bar" id="currentSpeedBar" style="width: 0%;"></div></div>
-            <div>Stamina: <span id="currentStaminaDisplay">100</span> / <span id="maxStaminaDisplay">100</span></div>
-            <div class="stat-bar"><div class="stat-fill stamina-bar" id="currentStaminaBar" style="width: 100%;"></div></div>
+            <div>Hold Gallop button to run faster (uses stamina)</div>
         </div>
 
         <input type="text" id="chatInput" placeholder="Type to chat..." maxlength="100" />
         <button id="chatButton">💬</button>
-        <div id="notificationArea"></div>
     </div>
 
     <script type="importmap">
@@ -433,47 +405,33 @@
         let scene, camera, renderer, controls;
         let horses = new Map();
         let myHorse = null;
-        let myHorseStats = { speed: 50, stamina: 100, maxStamina: 100 }; 
+        let myHorseStats = { speed: 50, stamina: 100, maxStamina: 100 };
         let room = null;
         let gameStarted = false;
         let keys = {};
         let isGalloping = false;
         let terrainChunks = new Map();
         let chunkSize = 50;
-        let renderDistance = 2; 
+        let renderDistance = 3; // Number of chunks in each direction
         let horseLabels = new Map();
         let chatInput = null;
         let chatTimeouts = new Map();
         let chatDisabled = false;
-
-        const FOOD_COLLECTION_TYPE = 'food_item_v2';
-        const PLAYER_HORSE_COLLECTION_TYPE = 'player_horse_v1';
-        let foodMeshes = new Map(); 
-        let processedFoodChunks = new Set(); 
-
-        const FOOD_TYPES = {
-            APPLE: {
-                type: "apple",
-                color: 0xff0000, 
-                geometryFactory: () => new THREE.SphereGeometry(0.3, 8, 8),
-                staminaBoost: 25,
-                permanentBoost: null,
-                spawnChance: 0.7, 
-                yOffset: 0.15
-            },
-            GOLDEN_CARROT: {
-                type: "golden_carrot",
-                color: 0xFFD700, 
-                geometryFactory: () => new THREE.ConeGeometry(0.2, 0.8, 8), 
-                staminaBoost: 10,
-                permanentBoost: { stat: "speed", value: 2 }, 
-                spawnChance: 0.3, 
-                yOffset: 0.4
-            }
+        let foodItems = new Map(); // Store food objects by position key
+        let consumedFoods = new Set(); // Track consumed foods
+        
+        // Food types with different effects and rarities
+        const foodTypes = {
+            apple: { color: 0xff0000, stamina: 20, speed: 0, rarity: 0.7, name: "Apple" },
+            carrot: { color: 0xff8c00, stamina: 15, speed: 1, rarity: 0.6, name: "Carrot" },
+            sugar: { color: 0xffffff, stamina: 30, speed: 2, rarity: 0.2, name: "Sugar Cube" },
+            oats: { color: 0xdaa520, stamina: 25, speed: 0, maxStamina: 5, rarity: 0.3, name: "Golden Oats" },
+            clover: { color: 0x00ff00, stamina: 10, speed: 0, maxStamina: 2, rarity: 0.5, name: "Lucky Clover" }
         };
 
-        const uiContainer = document.getElementById('ui');
-        const horseCreatorUI = document.getElementById('horseCreator');
+        // UI elements
+        const horseCreator = document.getElementById('horseCreator');
+        const gameUI = document.getElementById('gameUI');
         const horsePrompt = document.getElementById('horsePrompt');
         const horseColor = document.getElementById('horseColor');
         const horseType = document.getElementById('horseType');
@@ -481,13 +439,11 @@
         const generateBtn = document.getElementById('generateHorse');
         const startBtn = document.getElementById('startGame');
         const loadingText = document.getElementById('loadingText');
+        const gallopBtn = document.getElementById('gallop');
         const controlsDiv = document.getElementById('controls');
-        const playersListDiv = document.getElementById('playersList');
         const playersContainer = document.getElementById('playersContainer');
-        const statsDisplayDiv = document.getElementById('statsDisplay');
         chatInput = document.getElementById('chatInput');
         const chatButton = document.getElementById('chatButton');
-        const notificationArea = document.getElementById('notificationArea');
 
         function createHorseSprite(imageUrl) {
             return new Promise((resolve) => {
@@ -495,27 +451,29 @@
                 const texture = textureLoader.load(
                     imageUrl,
                     () => {
+                        // Texture loaded successfully
                         texture.magFilter = THREE.NearestFilter;
                         texture.minFilter = THREE.LinearFilter;
                         
                         const spriteMaterial = new THREE.SpriteMaterial({ 
                             map: texture,
                             transparent: true,
-                            alphaTest: 0.1 
+                            alphaTest: 0.1
                         });
                         const sprite = new THREE.Sprite(spriteMaterial);
-                        sprite.scale.set(4, 4, 1); 
-                        sprite.position.y = 2; 
+                        sprite.scale.set(4, 4, 1);
+                        sprite.position.y = 4;
                         
                         resolve(sprite);
                     },
                     undefined,
                     (error) => {
                         console.error('Error loading horse texture:', error);
+                        // Create a fallback colored sprite
                         const fallbackMaterial = new THREE.SpriteMaterial({ color: 0x8B4513 });
                         const sprite = new THREE.Sprite(fallbackMaterial);
                         sprite.scale.set(4, 4, 1);
-                        sprite.position.y = 2;
+                        sprite.position.y = 4;
                         resolve(sprite);
                     }
                 );
@@ -524,6 +482,8 @@
 
         function createTree() {
             const group = new THREE.Group();
+            
+            // Trunk
             const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.8, 4);
             const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
             const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
@@ -531,21 +491,67 @@
             trunk.castShadow = true;
             group.add(trunk);
 
+            // Leaves
             const leavesGeometry = new THREE.SphereGeometry(3);
             const leavesMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
             const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
             leaves.position.y = 5;
             leaves.castShadow = true;
             group.add(leaves);
+
             return group;
         }
 
+        function createFood(type, x, z) {
+            const foodData = foodTypes[type];
+            const geometry = new THREE.SphereGeometry(0.3);
+            const material = new THREE.MeshLambertMaterial({ color: foodData.color });
+            const food = new THREE.Mesh(geometry, material);
+            food.position.set(x, 0.3, z);
+            food.userData = { type, ...foodData };
+            return food;
+        }
+
+        function generateFoodInChunk(chunkX, chunkZ) {
+            const foods = [];
+            const foodCount = Math.floor(Math.random() * 5) + 2; // 2-6 food items per chunk
+            
+            for (let i = 0; i < foodCount; i++) {
+                // Pick random food type based on rarity
+                const rand = Math.random();
+                let selectedType = 'apple'; // default
+                let cumulativeRarity = 0;
+                
+                for (const [type, data] of Object.entries(foodTypes)) {
+                    cumulativeRarity += data.rarity;
+                    if (rand <= cumulativeRarity) {
+                        selectedType = type;
+                        break;
+                    }
+                }
+                
+                const x = chunkX * chunkSize + (Math.random() - 0.5) * chunkSize * 0.8;
+                const z = chunkZ * chunkSize + (Math.random() - 0.5) * chunkSize * 0.8;
+                const posKey = `${Math.floor(x)},${Math.floor(z)}`;
+                
+                // Don't create food if already consumed
+                if (!consumedFoods.has(posKey)) {
+                    const food = createFood(selectedType, x, z);
+                    foods.push(food);
+                    foodItems.set(posKey, food);
+                }
+            }
+            
+            return foods;
+        }
+
+        // Initialize Three.js scene
         function initScene() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87CEEB);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 5, 7); 
+            camera.position.set(0, 6, 8);
 
             renderer = new THREE.WebGLRenderer({ 
                 canvas: document.getElementById('gameCanvas'),
@@ -557,7 +563,8 @@
 
             generateInitialTerrain();
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7); 
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
             scene.add(ambientLight);
 
             const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -571,16 +578,15 @@
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
             controls.enablePan = false;
-            controls.maxPolarAngle = Math.PI / 2.1; 
-            controls.minDistance = 3; 
-            controls.maxDistance = 20; 
+            controls.enableZoom = false;
+            controls.maxPolarAngle = Math.PI / 2.2;
+            controls.minDistance = 5;
+            controls.maxDistance = 15;
         }
 
         function generateInitialTerrain() {
-            const initialPlayerChunkX = 0;
-            const initialPlayerChunkZ = 0;
-            for (let x = initialPlayerChunkX - renderDistance; x <= initialPlayerChunkX + renderDistance; x++) {
-                for (let z = initialPlayerChunkZ - renderDistance; z <= initialPlayerChunkZ + renderDistance; z++) {
+            for (let x = -renderDistance; x <= renderDistance; x++) {
+                for (let z = -renderDistance; z <= renderDistance; z++) {
                     createTerrainChunk(x, z);
                 }
             }
@@ -592,6 +598,7 @@
 
             const chunkGroup = new THREE.Group();
             
+            // Create field chunk
             const fieldGeometry = new THREE.PlaneGeometry(chunkSize, chunkSize);
             const fieldMaterial = new THREE.MeshLambertMaterial({ color: 0x90EE90 });
             const field = new THREE.Mesh(fieldGeometry, fieldMaterial);
@@ -600,106 +607,61 @@
             field.receiveShadow = true;
             chunkGroup.add(field);
 
-            const treeCount = Math.floor(Math.random() * 5) + 2; 
+            // Add trees to chunk
+            const treeCount = Math.floor(Math.random() * 8) + 3;
             for (let i = 0; i < treeCount; i++) {
                 const tree = createTree();
                 tree.position.set(
-                    chunkX * chunkSize + (Math.random() - 0.5) * chunkSize * 0.9, 
+                    chunkX * chunkSize + (Math.random() - 0.5) * chunkSize * 0.8,
                     0,
-                    chunkZ * chunkSize + (Math.random() - 0.5) * chunkSize * 0.9
+                    chunkZ * chunkSize + (Math.random() - 0.5) * chunkSize * 0.8
                 );
                 chunkGroup.add(tree);
             }
 
+            // Add food to chunk
+            const foods = generateFoodInChunk(chunkX, chunkZ);
+            foods.forEach(food => chunkGroup.add(food));
+
             scene.add(chunkGroup);
             terrainChunks.set(chunkKey, chunkGroup);
-
-            if (room && room.clientId) { 
-                 if (!processedFoodChunks.has(chunkKey)) {
-                    processedFoodChunks.add(chunkKey); 
-                    spawnFoodForChunk(chunkX, chunkZ, chunkKey);
-                }
-            }
-        }
-        
-        async function spawnFoodForChunk(chunkX, chunkZ, chunkKey) {
-            await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
-
-            const existingFoodInChunk = room.collection(FOOD_COLLECTION_TYPE).filter({ chunkKey: chunkKey }).getList();
-            if (existingFoodInChunk.length > 0) {
-                return;
-            }
-            
-            console.log(`Attempting to spawn food for new chunk: ${chunkKey}`);
-            const numItemsToSpawn = 1 + Math.floor(Math.random() * 3); 
-            for (let i = 0; i < numItemsToSpawn; i++) {
-                const rand = Math.random();
-                let chosenFoodKey = 'APPLE'; 
-                if (rand < FOOD_TYPES.GOLDEN_CARROT.spawnChance) { 
-                    chosenFoodKey = 'GOLDEN_CARROT';
-                }
-
-                const foodDetails = FOOD_TYPES[chosenFoodKey];
-                
-                const foodRecord = {
-                    type: foodDetails.type,
-                    x: chunkX * chunkSize + (Math.random() - 0.5) * chunkSize * 0.9,
-                    y: foodDetails.yOffset, 
-                    z: chunkZ * chunkSize + (Math.random() - 0.5) * chunkSize * 0.9,
-                    isEaten: false,
-                    eatenBy: null,
-                    statBoostType: foodDetails.permanentBoost ? foodDetails.permanentBoost.stat : null,
-                    statBoostValue: foodDetails.permanentBoost ? foodDetails.permanentBoost.value : null,
-                    staminaBoost: foodDetails.staminaBoost,
-                    chunkKey: chunkKey,
-                };
-                try {
-                    await room.collection(FOOD_COLLECTION_TYPE).create(foodRecord);
-                } catch (error) {
-                    console.error("Error creating food item in DB:", error);
-                }
-            }
         }
 
         function updateTerrain(playerX, playerZ) {
             const playerChunkX = Math.floor(playerX / chunkSize);
             const playerChunkZ = Math.floor(playerZ / chunkSize);
 
+            // Generate new chunks around player
             for (let x = playerChunkX - renderDistance; x <= playerChunkX + renderDistance; x++) {
                 for (let z = playerChunkZ - renderDistance; z <= playerChunkZ + renderDistance; z++) {
                     createTerrainChunk(x, z);
                 }
             }
 
+            // Remove distant chunks
             for (let [chunkKey, chunkGroup] of terrainChunks) {
-                const [loadedChunkX, loadedChunkZ] = chunkKey.split(',').map(Number);
-                const distance = Math.max(Math.abs(loadedChunkX - playerChunkX), Math.abs(loadedChunkZ - playerChunkZ));
+                const [chunkX, chunkZ] = chunkKey.split(',').map(Number);
+                const distance = Math.max(Math.abs(chunkX - playerChunkX), Math.abs(chunkZ - playerChunkZ));
                 
-                if (distance > renderDistance + 1) { 
+                if (distance > renderDistance + 1) {
                     scene.remove(chunkGroup);
                     terrainChunks.delete(chunkKey);
-                    foodMeshes.forEach((mesh, foodId) => {
-                        const foodData = room.collection(FOOD_COLLECTION_TYPE).getList().find(f => f.id === foodId);
-                        if (foodData && foodData.chunkKey === chunkKey) {
-                            scene.remove(mesh);
-                            foodMeshes.delete(foodId);
-                        }
-                    });
                 }
             }
-            if (room) updateFoodVisuals(room.collection(FOOD_COLLECTION_TYPE).getList());
         }
 
+        // Multiplayer setup
         async function initMultiplayer() {
             room = new WebsimSocket();
-            room.subscribePresence((currentPresence) => {
-                updatePlayersList(); 
-                updateHorsePositions(); 
-            });
-            
-            room.collection(FOOD_COLLECTION_TYPE).subscribe(updateFoodVisuals);
+            await room.initialize();
 
-            await loadMyHorseDataFromDB();
+            // Load consumed foods from database
+            await loadConsumedFoods();
+
+            room.subscribePresence((currentPresence) => {
+                updatePlayersList();
+                updateHorsePositions();
+            });
 
             room.onmessage = (event) => {
                 const data = event.data;
@@ -714,45 +676,37 @@
                 }
             };
         }
-        
-        async function loadMyHorseDataFromDB() {
-            if (!room || !room.clientId) {
-                console.log("Room not ready for loading horse data.");
-                return;
-            }
-            const playerHorseRecords = room.collection(PLAYER_HORSE_COLLECTION_TYPE).filter({ clientId: room.clientId }).getList();
-            
-            if (playerHorseRecords.length === 0) {
-                await new Promise(resolve => setTimeout(resolve, 1000)); 
-                const updatedRecords = room.collection(PLAYER_HORSE_COLLECTION_TYPE).filter({ clientId: room.clientId }).getList();
-                if (updatedRecords.length > 0) {
-                    Object.assign(myHorseStats, updatedRecords[0].stats); 
-                    window.myHorseData = { ...updatedRecords[0] }; 
-                    console.log("Loaded existing horse data:", window.myHorseData);
 
-                    horsePreview.src = window.myHorseData.image;
-                    horsePreview.style.display = 'block';
-                    startBtn.disabled = false;
-                    horsePrompt.value = "My returning steed"; 
-                } else {
-                    console.log("No existing horse data found for this player.");
-                }
-            } else {
-                Object.assign(myHorseStats, playerHorseRecords[0].stats);
-                window.myHorseData = { ...playerHorseRecords[0] };
-                console.log("Loaded existing horse data (fast):", window.myHorseData);
-                horsePreview.src = window.myHorseData.image;
-                horsePreview.style.display = 'block';
-                startBtn.disabled = false;
-                horsePrompt.value = "My returning steed";
+        async function loadConsumedFoods() {
+            const consumedRecords = room.collection('consumed_food').getList();
+            consumedRecords.forEach(record => {
+                consumedFoods.add(record.position);
+            });
+        }
+
+        async function consumeFood(posKey, foodType) {
+            // Remove from scene
+            const food = foodItems.get(posKey);
+            if (food && food.parent) {
+                food.parent.remove(food);
+                foodItems.delete(posKey);
+                consumedFoods.add(posKey);
+                
+                // Store in database
+                await room.collection('consumed_food').create({
+                    position: posKey,
+                    foodType: foodType,
+                    eatenBy: room.clientId
+                });
+                
+                return true;
             }
+            return false;
         }
 
         function updatePlayersList() {
-            if (!room || !room.peers) return;
             playersContainer.innerHTML = '';
             Object.values(room.peers).forEach(peer => {
-                if (!peer || !peer.avatarUrl || !peer.username) return; 
                 const playerDiv = document.createElement('div');
                 playerDiv.className = 'player-item';
                 playerDiv.innerHTML = `
@@ -764,9 +718,8 @@
         }
 
         function updateHorsePositions() {
-            if (!room || !room.presence) return;
             Object.entries(room.presence).forEach(([clientId, presence]) => {
-                if (presence && presence.horseImage && clientId !== room.clientId) {
+                if (presence.horseImage && clientId !== room.clientId) {
                     updateOrCreateHorse(clientId, presence);
                 }
             });
@@ -778,6 +731,7 @@
                 horses.set(clientId, horseSprite);
                 scene.add(horseSprite);
                 
+                // Create label for this horse
                 const peer = room.peers[clientId];
                 if (peer) {
                     createHorseLabel(clientId, peer.username, peer.avatarUrl);
@@ -785,7 +739,7 @@
             }
             
             const horse = horses.get(clientId);
-            if (horse && presence.x !== undefined && presence.z !== undefined) {
+            if (presence.x !== undefined && presence.z !== undefined) {
                 horse.position.x = presence.x;
                 horse.position.z = presence.z;
             }
@@ -796,43 +750,91 @@
                 scene.remove(horses.get(clientId));
                 horses.delete(clientId);
             }
+            
+            // Remove label
             if (horseLabels.has(clientId)) {
-                const labelElement = horseLabels.get(clientId);
-                if (labelElement && labelElement.parentNode) {
-                    labelElement.parentNode.removeChild(labelElement);
-                }
+                document.body.removeChild(horseLabels.get(clientId));
                 horseLabels.delete(clientId);
             }
         }
 
         function setupControls() {
             document.addEventListener('keydown', (e) => {
+                // If typing in chat, don't move horse
                 if (chatInput && document.activeElement === chatInput) {
-                    if (e.code === 'Enter') { sendChatMessage(); e.preventDefault(); }
-                    if (e.code === 'Escape') { hideChatInput(); e.preventDefault(); }
+                    if (e.code === 'Enter') {
+                        sendChatMessage();
+                        e.preventDefault();
+                    }
+                    if (e.code === 'Escape') {
+                        hideChatInput();
+                        e.preventDefault();
+                    }
                     return;
                 }
+
                 keys[e.code] = true;
-                if (e.code === 'Space' && gameStarted) { e.preventDefault(); isGalloping = true; }
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                    isGalloping = true;
+                }
             });
             document.addEventListener('keyup', (e) => {
                 keys[e.code] = false;
-                if (e.code === 'Space') { isGalloping = false; }
+                if (e.code === 'Space') {
+                    isGalloping = false;
+                }
             });
 
+            gallopBtn.addEventListener('mousedown', () => {
+                isGalloping = true;
+            });
+
+            gallopBtn.addEventListener('mouseup', () => {
+                isGalloping = false;
+            });
+
+            gallopBtn.addEventListener('mouseleave', () => {
+                isGalloping = false;
+            });
+
+            // Chat button functionality
             chatButton.addEventListener('click', (e) => {
                 e.stopPropagation();
-                if (!chatDisabled) { showChatInput(); }
+                if (!chatDisabled) {
+                    showChatInput();
+                }
             });
 
+            // Right-click and long-tap to toggle chat disable
             let longTapTimer = null;
-            chatButton.addEventListener('contextmenu', (e) => { e.preventDefault(); toggleChatDisabled(); });
-            chatButton.addEventListener('touchstart', (e) => {
-                longTapTimer = setTimeout(() => { toggleChatDisabled(); }, 500);
+            
+            chatButton.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                toggleChatDisabled();
             });
-            chatButton.addEventListener('touchend', () => { if (longTapTimer) { clearTimeout(longTapTimer); longTapTimer = null; } });
-            chatButton.addEventListener('touchcancel', () => { if (longTapTimer) { clearTimeout(longTapTimer); longTapTimer = null; } });
 
+            chatButton.addEventListener('touchstart', (e) => {
+                longTapTimer = setTimeout(() => {
+                    toggleChatDisabled();
+                }, 500);
+            });
+
+            chatButton.addEventListener('touchend', (e) => {
+                if (longTapTimer) {
+                    clearTimeout(longTapTimer);
+                    longTapTimer = null;
+                }
+            });
+
+            chatButton.addEventListener('touchcancel', (e) => {
+                if (longTapTimer) {
+                    clearTimeout(longTapTimer);
+                    longTapTimer = null;
+                }
+            });
+
+            // Hide chat when clicking outside
             document.addEventListener('click', (e) => {
                 if (chatInput.style.display === 'block' && 
                     !chatInput.contains(e.target) && 
@@ -840,9 +842,13 @@
                     hideChatInput();
                 }
             });
+
             chatInput.addEventListener('blur', () => {
+                // Small delay to allow for other click events to process
                 setTimeout(() => {
-                    if (document.activeElement !== chatInput) { hideChatInput(); }
+                    if (document.activeElement !== chatInput) {
+                        hideChatInput();
+                    }
                 }, 100);
             });
         }
@@ -882,6 +888,7 @@
                     chatTimestamp: Date.now()
                 });
                 
+                // Hide chat message after 5 seconds
                 setTimeout(() => {
                     room.updatePresence({
                         chatMessage: null,
@@ -889,66 +896,10 @@
                     });
                 }, 5000);
                 
+                // Clear input but keep it open
                 chatInput.value = '';
                 chatInput.focus();
             }
-        }
-
-        function updateMovement() {
-            if (!myHorse || !gameStarted) return;
-
-            let moveX = 0;
-            let moveZ = 0;
-            
-            if (keys['KeyW'] || keys['ArrowUp']) moveZ -= 1;
-            if (keys['KeyS'] || keys['ArrowDown']) moveZ += 1;
-            if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
-            if (keys['KeyD'] || keys['ArrowRight']) moveX += 1;
-
-            if (moveX !== 0 || moveZ !== 0) {
-                const speedMultiplier = isGalloping && myHorseStats.stamina > 0 ? 1.8 : 1; 
-                const baseSpeed = myHorseStats.speed / 1200; 
-                const actualSpeed = baseSpeed * speedMultiplier;
-
-                const moveDirection = new THREE.Vector2(moveX, moveZ).normalize();
-                myHorse.material.rotation = Math.atan2(moveDirection.x, moveDirection.y);
-
-                myHorse.position.x += moveDirection.x * actualSpeed;
-                myHorse.position.z += moveDirection.y * actualSpeed;
-
-                if (isGalloping && myHorseStats.stamina > 0) {
-                    myHorseStats.stamina = Math.max(0, myHorseStats.stamina - 0.3); 
-                } else if (!isGalloping && myHorseStats.stamina < myHorseStats.maxStamina) {
-                    myHorseStats.stamina = Math.min(myHorseStats.maxStamina, myHorseStats.stamina + 0.15); 
-                }
-
-                updateStatsDisplay();
-
-                room.updatePresence({
-                    x: myHorse.position.x,
-                    z: myHorse.position.z,
-                    stamina: myHorseStats.stamina,
-                });
-
-                updateTerrain(myHorse.position.x, myHorse.position.z);
-                
-                const targetCameraPos = new THREE.Vector3(myHorse.position.x, camera.position.y, myHorse.position.z + 7);
-                camera.position.lerp(targetCameraPos, 0.1);
-                controls.target.set(myHorse.position.x, myHorse.position.y + 1, myHorse.position.z);
-            } else if (!isGalloping && myHorseStats.stamina < myHorseStats.maxStamina) { 
-                myHorseStats.stamina = Math.min(myHorseStats.maxStamina, myHorseStats.stamina + 0.15); 
-                updateStatsDisplay();
-            }
-        }
-        
-        function updateStatsDisplay() {
-            document.getElementById('currentSpeedDisplay').textContent = myHorseStats.speed;
-            document.getElementById('currentStaminaDisplay').textContent = Math.floor(myHorseStats.stamina);
-            document.getElementById('maxStaminaDisplay').textContent = myHorseStats.maxStamina;
-            
-            const speedPercent = Math.min(100, (myHorseStats.speed / 100) * 100); 
-            document.getElementById('currentSpeedBar').style.width = `${speedPercent}%`;
-            document.getElementById('currentStaminaBar').style.width = `${(myHorseStats.stamina / myHorseStats.maxStamina) * 100}%`;
         }
 
         function createHorseLabel(clientId, username, avatarUrl) {
@@ -972,7 +923,7 @@
                 if (horse) {
                     const vector = new THREE.Vector3();
                     vector.setFromMatrixPosition(horse.matrixWorld);
-                    vector.y += 1.5; 
+                    vector.y += 1.5; // Position above horse
                     vector.project(camera);
 
                     const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
@@ -981,16 +932,18 @@
                     label.style.left = x + 'px';
                     label.style.top = y + 'px';
                     
+                    // Hide labels when chat is disabled
                     if (chatDisabled) {
                         label.style.display = 'none';
                     } else {
                         label.style.display = vector.z < 1 ? 'flex' : 'none';
                         
+                        // Update chat message
                         const presence = room.presence[clientId];
                         const chatDiv = label.querySelector('.horse-chat');
                         if (presence && presence.chatMessage && presence.chatTimestamp) {
                             const timeSince = Date.now() - presence.chatTimestamp;
-                            if (timeSince < 5000) { 
+                            if (timeSince < 5000) { // Show for 5 seconds
                                 chatDiv.textContent = presence.chatMessage;
                                 chatDiv.style.display = 'block';
                             } else {
@@ -1004,140 +957,7 @@
             });
         }
 
-        function createFoodMesh(foodData) {
-            const foodDetails = Object.values(FOOD_TYPES).find(ft => ft.type === foodData.type);
-            if (!foodDetails) {
-                console.warn("Unknown food type:", foodData.type);
-                return new THREE.Mesh(); 
-            }
-            const geometry = foodDetails.geometryFactory();
-            const material = new THREE.MeshStandardMaterial({ color: foodDetails.color, metalness: 0.2, roughness: 0.6 });
-            const mesh = new THREE.Mesh(geometry, material);
-            mesh.position.set(foodData.x, foodData.y, foodData.z); 
-            mesh.castShadow = true;
-            mesh.userData.foodId = foodData.id; 
-            return mesh;
-        }
-
-        function updateFoodVisuals(allFoodItemsFromServer) {
-            if (!room || !scene || !myHorse) return; 
-
-            const currentFoodIdsOnScreen = new Set(foodMeshes.keys());
-            const foodItemsFromServerById = new Map(allFoodItemsFromServer.map(item => [item.id, item]));
-            const playerChunkX = Math.floor(myHorse.position.x / chunkSize);
-            const playerChunkZ = Math.floor(myHorse.position.z / chunkSize);
-
-            allFoodItemsFromServer.forEach(foodData => {
-                if (foodData.isEaten) {
-                    if (foodMeshes.has(foodData.id)) {
-                        scene.remove(foodMeshes.get(foodData.id));
-                        foodMeshes.delete(foodData.id);
-                    }
-                    return;
-                }
-
-                const foodChunkX = Math.floor(foodData.x / chunkSize);
-                const foodChunkZ = Math.floor(foodData.z / chunkSize);
-                const chunkDist = Math.max(Math.abs(foodChunkX - playerChunkX), Math.abs(foodChunkZ - playerChunkZ));
-
-                if (chunkDist <= renderDistance + 1) { 
-                    if (!foodMeshes.has(foodData.id)) {
-                        const foodMesh = createFoodMesh(foodData);
-                        scene.add(foodMesh);
-                        foodMeshes.set(foodData.id, foodMesh);
-                    }
-                } else {
-                    if (foodMeshes.has(foodData.id)) {
-                        scene.remove(foodMeshes.get(foodData.id));
-                        foodMeshes.delete(foodData.id);
-                    }
-                }
-            });
-
-            foodMeshes.forEach((mesh, foodId) => {
-                if (!foodItemsFromServerById.has(foodId) || foodItemsFromServerById.get(foodId).isEaten) {
-                    scene.remove(mesh);
-                    foodMeshes.delete(foodId);
-                }
-            });
-        }
-
-        async function checkForFoodConsumption() {
-            if (!myHorse || !room) return;
-            const horsePos = myHorse.position;
-            const eatRadiusSq = 1.5 * 1.5; 
-
-            for (const [foodId, foodMesh] of foodMeshes) {
-                const foodData = room.collection(FOOD_COLLECTION_TYPE).getList().find(f => f.id === foodId);
-                if (!foodData || foodData.isEaten) continue;
-
-                const foodPos = foodMesh.position;
-                if (horsePos.distanceToSquared(foodPos) < eatRadiusSq) {
-                    console.log("Eating food:", foodData.type, foodData.id);
-                    try {
-                        await room.collection(FOOD_COLLECTION_TYPE).update(foodId, { isEaten: true, eatenBy: room.clientId });
-                        
-                        myHorseStats.stamina = Math.min(myHorseStats.maxStamina, myHorseStats.stamina + foodData.staminaBoost);
-                        
-                        if (foodData.statBoostType && foodData.statBoostValue) {
-                            let boostApplied = false;
-                            if (foodData.statBoostType === "speed") {
-                                myHorseStats.speed += foodData.statBoostValue;
-                                boostApplied = true;
-                            } else if (foodData.statBoostType === "maxStamina") {
-                                myHorseStats.maxStamina += foodData.statBoostValue;
-                                myHorseStats.stamina = Math.min(myHorseStats.maxStamina, myHorseStats.stamina + foodData.statBoostValue);
-                                boostApplied = true;
-                            }
-
-                            if (boostApplied) {
-                                const playerHorseRecords = room.collection(PLAYER_HORSE_COLLECTION_TYPE).filter({ clientId: room.clientId }).getList();
-                                if (playerHorseRecords.length > 0) {
-                                    const playerRecord = playerHorseRecords[0];
-                                    const updatedPlayerStats = { ...playerRecord.stats, ...myHorseStats };
-                                    await room.collection(PLAYER_HORSE_COLLECTION_TYPE).update(playerRecord.id, { stats: updatedPlayerStats });
-                                } else { 
-                                    console.warn("Player horse record not found for stat update. Creating one.");
-                                    const currentUser = room.peers[room.clientId];
-                                    await room.collection(PLAYER_HORSE_COLLECTION_TYPE).create({
-                                        clientId: room.clientId,
-                                        username: currentUser ? currentUser.username : "Player",
-                                        image: window.myHorseData ? window.myHorseData.image : horsePreview.src, 
-                                        stats: { ...myHorseStats }
-                                    });
-                                }
-                                showNotification(`${foodData.statBoostType.charAt(0).toUpperCase() + foodData.statBoostType.slice(1)} permanently increased by ${foodData.statBoostValue}!`);
-                            }
-                        }
-                        updateStatsDisplay();
-                    } catch (error) {
-                        console.error("Error consuming food:", error);
-                    }
-                    break; 
-                }
-            }
-        }
-        
-        function showNotification(message) {
-            const notification = document.createElement('div');
-            notification.className = 'notification';
-            notification.textContent = message;
-            notificationArea.appendChild(notification);
-
-            setTimeout(() => {
-                notification.classList.add('show');
-            }, 10); 
-
-            setTimeout(() => {
-                notification.classList.remove('show');
-                setTimeout(() => {
-                    if (notification.parentNode) {
-                        notification.parentNode.removeChild(notification);
-                    }
-                }, 500); 
-            }, 3000);
-        }
-
+        // Horse generation
         async function generateHorse() {
             const userPrompt = horsePrompt.value.trim() || "beautiful running";
             const horseColor = document.getElementById('horseColor').value;
@@ -1156,6 +976,7 @@
                     aspect_ratio: "1:1"
                 });
                 
+                // Upload the generated image to get a stable URL
                 const response = await fetch(result.url);
                 const blob = await response.blob();
                 const uploadedUrl = await websim.upload(blob);
@@ -1164,14 +985,17 @@
                 horsePreview.style.display = 'block';
                 startBtn.disabled = false;
                 
-                myHorseStats.speed = Math.floor(Math.random() * 50) + 25; 
+                // Generate random stats
+                myHorseStats.speed = Math.floor(Math.random() * 50) + 25; // 25-75
                 myHorseStats.stamina = 100;
-                myHorseStats.maxStamina = Math.floor(Math.random() * 50) + 75; 
+                myHorseStats.maxStamina = Math.floor(Math.random() * 50) + 75; // 75-125
                 
+                // Store horse data with uploaded URL
                 window.myHorseData = {
                     image: uploadedUrl,
                     stats: { ...myHorseStats }
                 };
+                
             } catch (error) {
                 console.error('Error generating horse:', error);
                 alert('Failed to generate horse. Please try again.');
@@ -1181,31 +1005,34 @@
             }
         }
 
+        // Game loop
         function animate() {
             requestAnimationFrame(animate);
             
             updateMovement();
             updateHorseLabels();
-            checkForFoodConsumption();
             controls.update();
             renderer.render(scene, camera);
         }
 
+        // Event listeners
         generateBtn.addEventListener('click', generateHorse);
         
         startBtn.addEventListener('click', async () => {
             if (!window.myHorseData) return;
 
-            horseCreatorUI.style.display = 'none';
+            horseCreator.style.display = 'none';
             gameUI.style.display = 'none';
             controlsDiv.style.display = 'none';
             document.getElementById('ui').style.display = 'none';
             gameStarted = true;
 
+            // Create my horse sprite and wait for it to load
             myHorse = await createHorseSprite(window.myHorseData.image);
-            myHorse.position.set(0, 2, 0);
+            myHorse.position.set(0, 4, 0);
             scene.add(myHorse);
 
+            // Update multiplayer with horse data
             room.updatePresence({
                 horseImage: window.myHorseData.image,
                 stats: window.myHorseData.stats,
@@ -1214,25 +1041,158 @@
                 stamina: myHorseStats.stamina
             });
 
-            updateStatsDisplay();
+            updateStatsUI();
             
+            // Create label for my horse
             const currentUser = room.peers[room.clientId];
             if (currentUser) {
                 createHorseLabel(room.clientId, currentUser.username, currentUser.avatarUrl);
             }
         });
 
+        // Handle window resize
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
+        // Initialize game
         async function init() {
             initScene();
             await initMultiplayer();
             setupControls();
             animate();
+        }
+
+        function updateMovement() {
+            if (!myHorse || !gameStarted) return;
+
+            let moveX = 0;
+            let moveZ = 0;
+            
+            if (keys['KeyW'] || keys['ArrowUp']) moveZ -= 1;
+            if (keys['KeyS'] || keys['ArrowDown']) moveZ += 1;
+            if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
+            if (keys['KeyD'] || keys['ArrowRight']) moveX += 1;
+
+            if (moveX !== 0 || moveZ !== 0) {
+                const speedMultiplier = isGalloping && myHorseStats.stamina > 0 ? 2 : 1;
+                const baseSpeed = myHorseStats.speed / 1000;
+                const actualSpeed = baseSpeed * speedMultiplier;
+
+                myHorse.position.x += moveX * actualSpeed;
+                myHorse.position.z += moveZ * actualSpeed;
+
+                // Update stamina
+                if (isGalloping && myHorseStats.stamina > 0) {
+                    myHorseStats.stamina = Math.max(0, myHorseStats.stamina - 0.5);
+                } else if (!isGalloping && myHorseStats.stamina < myHorseStats.maxStamina) {
+                    myHorseStats.stamina = Math.min(myHorseStats.maxStamina, myHorseStats.stamina + 0.2);
+                }
+
+                // Update UI
+                updateStatsUI();
+
+                // Update multiplayer position
+                room.updatePresence({
+                    x: myHorse.position.x,
+                    z: myHorse.position.z,
+                    stamina: myHorseStats.stamina
+                });
+
+                // Update terrain chunks
+                updateTerrain(myHorse.position.x, myHorse.position.z);
+
+                // Update camera to follow horse smoothly
+                const targetCameraX = myHorse.position.x;
+                const targetCameraZ = myHorse.position.z + 6;
+                const targetCameraY = 6;
+                
+                camera.position.x += (targetCameraX - camera.position.x) * 0.1;
+                camera.position.z += (targetCameraZ - camera.position.z) * 0.1;
+                camera.position.y += (targetCameraY - camera.position.y) * 0.1;
+                
+                controls.target.set(myHorse.position.x, 2, myHorse.position.z);
+            }
+            
+            // Check for food collision
+            checkFoodCollision();
+        }
+
+        function updateStatsUI() {
+            document.getElementById('speedValue').textContent = myHorseStats.speed;
+            document.getElementById('staminaValue').textContent = Math.floor(myHorseStats.stamina);
+            
+            document.getElementById('speedBar').style.width = `${(myHorseStats.speed / 100) * 100}%`;
+            document.getElementById('staminaBar').style.width = `${(myHorseStats.stamina / myHorseStats.maxStamina) * 100}%`;
+        }
+
+        function checkFoodCollision() {
+            if (!myHorse || !gameStarted) return;
+            
+            const horsePos = myHorse.position;
+            const eatDistance = 2; // How close horse needs to be to eat food
+            
+            foodItems.forEach((food, posKey) => {
+                const distance = horsePos.distanceTo(food.position);
+                if (distance < eatDistance) {
+                    const foodData = food.userData;
+                    
+                    // Apply food effects
+                    myHorseStats.stamina = Math.min(myHorseStats.maxStamina, 
+                        myHorseStats.stamina + foodData.stamina);
+                    
+                    if (foodData.speed) {
+                        myHorseStats.speed += foodData.speed;
+                    }
+                    
+                    if (foodData.maxStamina) {
+                        myHorseStats.maxStamina += foodData.maxStamina;
+                        myHorseStats.stamina = Math.min(myHorseStats.maxStamina, myHorseStats.stamina);
+                    }
+                    
+                    // Show visual feedback
+                    showFoodConsumedIndicator(foodData.name, horsePos);
+                    
+                    // Consume the food
+                    consumeFood(posKey, foodData.type);
+                    
+                    // Update UI and presence
+                    updateStatsUI();
+                    room.updatePresence({
+                        stats: myHorseStats,
+                        stamina: myHorseStats.stamina
+                    });
+                }
+            });
+        }
+
+        function showFoodConsumedIndicator(foodName, position) {
+            const indicator = document.createElement('div');
+            indicator.className = 'food-consumed-indicator';
+            indicator.textContent = `+${foodName}!`;
+            
+            // Convert 3D position to screen coordinates
+            const vector = new THREE.Vector3();
+            vector.setFromMatrixPosition(myHorse.matrixWorld);
+            vector.y += 2;
+            vector.project(camera);
+            
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+            
+            indicator.style.left = x + 'px';
+            indicator.style.top = y + 'px';
+            
+            document.body.appendChild(indicator);
+            
+            // Remove after animation
+            setTimeout(() => {
+                if (indicator.parentNode) {
+                    document.body.removeChild(indicator);
+                }
+            }, 2000);
         }
 
         init();
