@@ -432,10 +432,20 @@
         let jumpDuration = 800; // Jump duration in ms
         let maxJumpHeight = 3;
         
+        // Flying functionality
+        let isFlying = false;
+        let flyingHeight = 0;
+        let maxFlyingHeight = 20;
+        let flySpeed = 0.1;
+        
         // Double tap detection
         let lastTapTime = 0;
         let lastSpaceTime = 0;
         let doubleTapDelay = 300; // Max time between taps for double tap
+        
+        // Triple tap detection for flying
+        let spacePressTimes = [];
+        let tripleTapDelay = 500; // Max time window for triple tap
         
         // Food types with different effects and rarities
         const foodTypes = {
@@ -767,6 +777,8 @@
                 const progress = Math.min(elapsed / jumpDuration, 1);
                 const jumpHeight = Math.sin(progress * Math.PI) * maxJumpHeight;
                 horse.position.y = 4 + jumpHeight;
+            } else if (presence.isFlying && presence.flyingHeight !== undefined) {
+                horse.position.y = 4 + presence.flyingHeight;
             } else {
                 horse.position.y = 4; // Reset to base height
             }
@@ -812,13 +824,31 @@
                     }
                     lastSpaceTime = currentTime;
                     
-                    isGalloping = true;
+                    // Track space presses for triple tap detection
+                    spacePressTimes.push(currentTime);
+                    // Keep only recent presses
+                    spacePressTimes = spacePressTimes.filter(time => currentTime - time < tripleTapDelay);
+                    
+                    // Check for triple tap
+                    if (spacePressTimes.length >= 3) {
+                        startFlying();
+                        spacePressTimes = []; // Reset
+                    }
+                    
+                    if (isFlying) {
+                        // Space controls altitude in flying mode
+                        // Don't set isGalloping when flying
+                    } else {
+                        isGalloping = true;
+                    }
                 }
             });
             document.addEventListener('keyup', (e) => {
                 keys[e.code] = false;
                 if (e.code === 'Space') {
-                    isGalloping = false;
+                    if (!isFlying) {
+                        isGalloping = false;
+                    }
                 }
             });
 
@@ -907,7 +937,7 @@
         }
         
         function startJump() {
-            if (!myHorse || !gameStarted || isJumping) return;
+            if (!myHorse || !gameStarted || isJumping || isFlying) return;
             
             // Play jump sound
             if (jumpSound) {
@@ -926,6 +956,32 @@
             });
         }
 
+        function startFlying() {
+            if (!myHorse || !gameStarted) return;
+            
+            isFlying = true;
+            isJumping = false; // Cancel jump if jumping
+            flyingHeight = myHorse.position.y - 4; // Current height above ground
+            
+            // Update multiplayer presence
+            room.updatePresence({
+                isFlying: true,
+                isJumping: false,
+                jumpStartTime: null
+            });
+        }
+
+        function stopFlying() {
+            isFlying = false;
+            flyingHeight = 0;
+            myHorse.position.y = 4; // Reset to ground level
+            
+            // Update multiplayer presence
+            room.updatePresence({
+                isFlying: false
+            });
+        }
+        
         function onCanvasClick(event) {
             if (!myHorse || !gameStarted) return;
             
@@ -942,8 +998,14 @@
             const horseIntersects = raycaster.intersectObject(myHorse);
             
             if (horseIntersects.length > 0) {
-                // Clicked on horse - jump!
-                startJump();
+                // Clicked on horse
+                if (isJumping) {
+                    // Horse is jumping - start flying!
+                    startFlying();
+                } else {
+                    // Horse on ground - jump!
+                    startJump();
+                }
                 return;
             }
             
@@ -966,8 +1028,14 @@
             const horseIntersects = raycaster.intersectObject(myHorse);
             
             if (horseIntersects.length > 0) {
-                // Touched horse - jump!
-                startJump();
+                // Touched horse
+                if (isJumping) {
+                    // Horse is jumping - start flying!
+                    startFlying();
+                } else {
+                    // Horse on ground - jump!
+                    startJump();
+                }
                 return;
             }
             
@@ -1210,6 +1278,9 @@
 
             // Update jump animation
             updateJump();
+            
+            // Update flying
+            updateFlying();
 
             let moveX = 0;
             let moveZ = 0;
@@ -1248,15 +1319,15 @@
             }
 
             if (moveX !== 0 || moveZ !== 0) {
-                const speedMultiplier = isGalloping && myHorseStats.stamina > 0 ? 2 : 1;
+                const speedMultiplier = isGalloping && myHorseStats.stamina > 0 && !isFlying ? 2 : 1;
                 const baseSpeed = myHorseStats.speed / 1000;
                 const actualSpeed = baseSpeed * speedMultiplier;
 
                 myHorse.position.x += moveX * actualSpeed;
                 myHorse.position.z += moveZ * actualSpeed;
 
-                // Update stamina
-                if (isGalloping && myHorseStats.stamina > 0) {
+                // Update stamina (only when galloping on ground)
+                if (isGalloping && myHorseStats.stamina > 0 && !isFlying) {
                     myHorseStats.stamina = Math.max(0, myHorseStats.stamina - 0.5);
                 } else if (!isGalloping && myHorseStats.stamina < myHorseStats.maxStamina) {
                     myHorseStats.stamina = Math.min(myHorseStats.maxStamina, myHorseStats.stamina + 0.2);
@@ -1266,12 +1337,18 @@
                 updateStatsUI();
 
                 // Update multiplayer position
-                room.updatePresence({
+                const presenceUpdate = {
                     x: myHorse.position.x,
                     z: myHorse.position.z,
                     stamina: myHorseStats.stamina
-                });
-
+                };
+                
+                if (isFlying) {
+                    presenceUpdate.flyingHeight = flyingHeight;
+                }
+                
+                room.updatePresence(presenceUpdate);
+                
                 // Update terrain chunks
                 updateTerrain(myHorse.position.x, myHorse.position.z);
 
@@ -1367,7 +1444,7 @@
         }
 
         function updateJump() {
-            if (isJumping) {
+            if (isJumping && !isFlying) {
                 const elapsed = Date.now() - jumpStartTime;
                 const progress = Math.min(elapsed / jumpDuration, 1);
                 
@@ -1386,6 +1463,24 @@
                         isJumping: false,
                         jumpStartTime: null
                     });
+                }
+            }
+        }
+        
+        function updateFlying() {
+            if (isFlying) {
+                // Handle vertical movement with space bar
+                if (keys['Space']) {
+                    flyingHeight = Math.min(maxFlyingHeight, flyingHeight + flySpeed);
+                } else {
+                    flyingHeight = Math.max(0, flyingHeight - flySpeed * 0.5); // Fall slower than rise
+                }
+                
+                myHorse.position.y = 4 + flyingHeight;
+                
+                // Check if landed
+                if (flyingHeight <= 0 && myHorse.position.y <= 4) {
+                    stopFlying();
                 }
             }
         }
